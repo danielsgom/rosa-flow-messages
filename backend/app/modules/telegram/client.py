@@ -70,3 +70,50 @@ class TelegramClientWrapper:
     async def get_me(self) -> dict:
         """Get information about the current user."""
         return await self.client.get_me()
+
+    async def get_dialogs(self) -> list:
+        """Get all dialogs (chats/conversations) from Telegram.
+
+        Returns a list of dicts with:
+            chat_id, name, full_name, username, last_message_preview, last_message_at
+        """
+        if not self.client:
+            raise RuntimeError("Client not connected")
+
+        dialogs = []
+        async for dialog in self.client.iter_dialogs():
+            entity = dialog.entity
+
+            # Get name info
+            name = getattr(entity, 'first_name', '') or getattr(entity, 'title', '') or str(entity.id)
+
+            full_name = None
+            username = None
+
+            if hasattr(entity, 'first_name'):
+                first = getattr(entity, 'first_name', '') or ''
+                last = getattr(entity, 'last_name', '') or ''
+                full_name = f"{first} {last}".strip()
+                username = getattr(entity, 'username', None)
+
+            # Get last message preview
+            last_preview = ''
+            last_date = None
+            if dialog.message:
+                if dialog.message.text:
+                    last_preview = dialog.message.text[:100]
+                elif dialog.message.media:
+                    last_preview = '📎 Media'
+                last_date = dialog.message.date
+
+            dialogs.append({
+                'chat_id': dialog.id,
+                'name': name,
+                'full_name': full_name,
+                'username': username,
+                'last_message_preview': last_preview,
+                'last_message_at': last_date,
+            })
+
+        logger.info(f"Fetched {len(dialogs)} dialogs from Telegram")
+        return dialogs

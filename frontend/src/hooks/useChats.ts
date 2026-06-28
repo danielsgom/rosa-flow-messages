@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Chat } from '../types';
-import { getChats, toggleChat } from '../services/api';
+import { getChats, toggleChat, syncChats } from '../services/api';
 
 export function useChats() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchChats = useCallback(async () => {
@@ -22,16 +23,13 @@ export function useChats() {
 
   const toggleAuto = useCallback(async (chatId: number, enabled: boolean) => {
     try {
-      // Optimistic update
       setChats((prev) =>
         prev.map((chat) =>
           chat.chat_id === chatId ? { ...chat, auto_enabled: enabled } : chat
         )
       );
-
       await toggleChat(chatId, enabled);
     } catch (err) {
-      // Rollback on error
       setChats((prev) =>
         prev.map((chat) =>
           chat.chat_id === chatId ? { ...chat, auto_enabled: !enabled } : chat
@@ -41,11 +39,25 @@ export function useChats() {
     }
   }, []);
 
+  const syncWithTelegram = useCallback(async () => {
+    try {
+      setSyncLoading(true);
+      setError(null);
+      const result = await syncChats();
+      setChats(result.chats);
+      return result;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sync failed');
+      throw err;
+    } finally {
+      setSyncLoading(false);
+    }
+  }, []);
+
+  // Carga inicial una sola vez
   useEffect(() => {
     fetchChats();
-    const interval = setInterval(fetchChats, 5000); // Poll every 5s
-    return () => clearInterval(interval);
   }, [fetchChats]);
 
-  return { chats, loading, error, toggleAuto, refresh: fetchChats };
+  return { chats, loading, syncLoading, error, toggleAuto, refresh: fetchChats, syncWithTelegram };
 }

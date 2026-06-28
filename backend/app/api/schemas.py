@@ -25,3 +25,10 @@ class ToggleResponse(BaseModel):
     chat_id: int
     auto_enabled: bool
     conversation_status: str
+
+
+class SyncResponse(BaseModel):
+    """Schema for Telegram sync response."""
+    synced: int
+    total: int
+    chats: List[ChatResponse]

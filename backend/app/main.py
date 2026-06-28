@@ -13,7 +13,7 @@ from app.modules.context import PromptLoader, PromptValidator, ConversationHisto
 from app.modules.openai_client import OpenAIClient, ResponseGenerator
 from app.modules.telegram import TelegramClientWrapper, MessageEventHandler, TelegramSender
 from app.modules.trigger import TriggerEngine
-from app.api.routes import ChatRegistryDep, router as api_router
+from app.api.routes import ChatRegistryDep, TelegramClientDep, router as api_router
 from app.logger_config import setup_logging
 
 logger = get_logger(__name__)
@@ -58,6 +58,7 @@ async def lifespan(app: FastAPI):
     )
 
     await telegram_wrapper.start(phone=settings.telegram_phone)
+    TelegramClientDep.client = telegram_wrapper
 
     sender = TelegramSender(telegram_wrapper)
 

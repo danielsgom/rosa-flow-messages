@@ -3,17 +3,42 @@ import { useChats } from '../hooks/useChats';
 import { ChatList } from '../components/ChatList';
 
 export const HomePage: React.FC = () => {
-  const { chats, loading, error, toggleAuto } = useChats();
+  const { chats, loading, syncLoading, error, toggleAuto, syncWithTelegram } = useChats();
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Rosa Flow</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Gestiona tus conversaciones de Telegram con IA
-          </p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Rosa Flow</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Gestiona tus conversaciones de Telegram con IA
+            </p>
+          </div>
+          <button
+            onClick={syncWithTelegram}
+            disabled={syncLoading}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              syncLoading
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-rosa-600 text-white hover:bg-rosa-700 active:bg-rosa-800 shadow-sm'
+            }`}
+          >
+            {syncLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b border-white" />
+                Sincronizando...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Sincronizar
+              </>
+            )}
+          </button>
         </div>
 
         {/* Stats */}
@@ -44,7 +69,7 @@ export const HomePage: React.FC = () => {
         )}
 
         {/* Chat List */}
-        <ChatList chats={chats} onToggle={toggleAuto} loading={loading} />
+        <ChatList chats={chats} onToggle={toggleAuto} loading={loading || syncLoading} />
       </div>
     </div>
   );
