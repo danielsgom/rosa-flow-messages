@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from .loader import PromptLoader
 from .validator import PromptValidator
@@ -26,7 +26,7 @@ class ContextManager:
         self.prompt_validator.validate(content)
         self._system_prompt = content
 
-    def build_context(self, chat_id: int, new_message: str) -> List[dict]:
+    def build_context(self, chat_id: int, new_message: Optional[str] = None) -> List[dict]:
         """Build the full messages array for OpenAI API."""
         messages = [{"role": "system", "content": self._system_prompt}]
 
@@ -34,8 +34,9 @@ class ContextManager:
         history_messages = self.history.get_for_openai(chat_id)
         messages.extend(history_messages)
 
-        # Add new user message
-        messages.append({"role": "user", "content": new_message})
+        # Add new user message if provided
+        if new_message:
+            messages.append({"role": "user", "content": new_message})
 
         return messages
 
