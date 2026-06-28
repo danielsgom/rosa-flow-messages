@@ -34,7 +34,7 @@ class MessageEventHandler:
         if not message.text:
             return
 
-        # Get sender info
+        # Get sender info (User entity)
         sender = await event.get_sender()
         chat = await event.get_chat()
 
@@ -44,9 +44,21 @@ class MessageEventHandler:
         # Get display name
         name = getattr(chat, 'first_name', '') or getattr(chat, 'title', '')
         if not name and sender:
-            name = f"{getattr(sender, 'first_name', '')} {getattr(sender, 'last_name', '')}".strip()
+            name = getattr(sender, 'first_name', '') or str(chat_id)
 
-        logger.info(f"Message from {name} (chat {chat_id}): {message.text[:50]}")
+        # Get full name (first + last)
+        full_name = None
+        username = None
+        if isinstance(sender, User):
+            first = getattr(sender, 'first_name', '') or ''
+            last = getattr(sender, 'last_name', '') or ''
+            full_name = f"{first} {last}".strip()
+            username = getattr(sender, 'username', None)
+            if not name:
+                name = first or str(chat_id)
+
+        logger.info(
+            f"Message from {full_name or name} (@{username or 'N/A'}) [chat {chat_id}]: {message.text[:50]}")
 
         tg_message = TelegramMessage(
             chat_id=chat_id,
@@ -62,4 +74,8 @@ class MessageEventHandler:
             sender_id=sender_id,
             text=message.text,
             my_id=self._my_id,
+            name=name,
+            full_name=full_name,
+            username=username,
+            date=message.date,
         )

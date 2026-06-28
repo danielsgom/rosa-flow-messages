@@ -29,6 +29,8 @@ async def list_chats(registry: ChatRegistry = Depends(get_chat_registry)):
         ChatResponse(
             chat_id=c.chat_id,
             name=c.name,
+            full_name=c.full_name,
+            username=c.username,
             last_message_preview=c.last_message_preview,
             last_message_at=c.last_message_at,
             auto_enabled=c.auto_enabled,

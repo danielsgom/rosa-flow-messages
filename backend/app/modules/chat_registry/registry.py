@@ -16,6 +16,8 @@ class ChatRegistry:
         self,
         chat_id: int,
         name: str = "",
+        full_name: Optional[str] = None,
+        username: Optional[str] = None,
         last_message: str = "",
         last_date: Optional[datetime] = None,
     ) -> ChatInfo:
@@ -23,13 +25,21 @@ class ChatRegistry:
         async with self._lock:
             if chat_id in self._chats:
                 chat = self._chats[chat_id]
-                chat.name = name or chat.name
-                chat.last_message_preview = last_message or chat.last_message_preview
+                if name:
+                    chat.name = name
+                if full_name:
+                    chat.full_name = full_name
+                if username:
+                    chat.username = username
+                if last_message:
+                    chat.last_message_preview = last_message
                 chat.last_message_at = last_date or datetime.now()
             else:
                 chat = ChatInfo(
                     chat_id=chat_id,
                     name=name or str(chat_id),
+                    full_name=full_name,
+                    username=username,
                     last_message_preview=last_message,
                     last_message_at=last_date or datetime.now(),
                 )

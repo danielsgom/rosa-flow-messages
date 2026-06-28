@@ -1,6 +1,8 @@
 export interface Chat {
   chat_id: number;
-  name: string;
+  name: string;                 // display name (first_name)
+  full_name?: string;           // first_name + last_name
+  username?: string;            // @username without @
   last_message_preview: string;
   last_message_at: string;
   auto_enabled: boolean;

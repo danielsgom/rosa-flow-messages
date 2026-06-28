@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -7,6 +7,8 @@ class ChatResponse(BaseModel):
     """Schema for chat list response."""
     chat_id: int
     name: str
+    full_name: Optional[str] = None
+    username: Optional[str] = None
     last_message_preview: str
     last_message_at: datetime
     auto_enabled: bool

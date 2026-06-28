@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+from typing import Optional
 
 from app.modules.logger import get_logger
 from app.config import Settings
@@ -39,6 +40,10 @@ class TriggerEngine:
         sender_id: int,
         text: str,
         my_id: int = 0,
+        name: str = "",
+        full_name: Optional[str] = None,
+        username: Optional[str] = None,
+        date: Optional[datetime] = None,
     ) -> TriggerResult:
         """
         Process an incoming message and decide whether to respond.
@@ -48,6 +53,10 @@ class TriggerEngine:
             sender_id: The sender's ID.
             text: The message text.
             my_id: Our own Telegram ID to detect outbound messages.
+            name: Display name from Telegram.
+            full_name: Full name (first + last).
+            username: Telegram @handle.
+            date: Message timestamp.
 
         Returns:
             TriggerResult with decision details.
@@ -55,8 +64,11 @@ class TriggerEngine:
         # 1. Register the chat
         chat = await self.chat_registry.register_or_update(
             chat_id=chat_id,
+            name=name,
+            full_name=full_name,
+            username=username,
             last_message=text,
-            last_date=datetime.now(),
+            last_date=date or datetime.now(),
         )
 
         # 2. Ignore our own outbound messages
