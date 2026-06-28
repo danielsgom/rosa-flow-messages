@@ -1,0 +1,34 @@
+# .aicontext/manifest.yaml
+# AI Context configuration for rosa-flow-messages
+
+name: rosa-flow-messages
+version: 1.0.0
+description: AI context for rosa-flow-messages
+
+# ─── Assistants ───────────────────────────────────────────────────────────────────
+assistants:
+  - copilot
+
+# ─── Marketplace sources ──────────────────────────────────────────────────
+marketplace:
+  - github:inditex/cac-moyaagentrules
+
+# ─── Templates ────────────────────────────────────────────────────────────
+templates:
+  - 
+  - "github:inditex/cac-moyaagentrules#templates/sdd"
+  - "github:inditex/cac-moyaagentrules#templates/probatio-python-unit"
+  - "github:inditex/cac-moyaagentrules#templates/api-rest"
+
+# ─── Remote context packages ─────────────────────────────────────────────────
+packages:
+  - name: 
+    source: ""
+  - name: github_inditex_cac-moyaagentrules_main
+    source: "github:inditex/cac-moyaagentrules"
+    select:
+      rules:
+        items:
+          - api/rest-api-rules
+          - quality/test-python-unit
+

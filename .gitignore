@@ -1,0 +1,53 @@
+# --- aicontext generated files (start) ---
+# Claude Code
+.claude/skills
+.claude/commands
+.mcp.json
+
+# GitHub Copilot
+.github/instructions
+.github/skills
+.github/prompts
+.github/copilot-memory
+.vscode/mcp.json
+
+# OpenCode
+.opencode/skills
+.opencode/commands
+.opencode/opencode.json
+
+# SDD
+.sdd/
+
+# Workspace repos (cloned by aicontext install)
+repos/
+# --- aicontext generated files (end) ---
+
+# Rosa Flow Messages
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv
+venv/
+*.egg-info/
+dist/
+build/
+
+node_modules/
+.env.local
+.env.*.local
+frontend/dist/
+*.log
+
+sessions/
+*.session
+*.session-journal
+
+.DS_Store
+Thumbs.db
+
+htmlcov/
+.coverage
+.coverage.*

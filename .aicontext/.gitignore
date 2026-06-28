@@ -1,0 +1,25 @@
+# Generated files (assistant-specific concatenated rules)
+.generated/
+
+# Link state tracking (managed by aicontext CLI)
+.link-state/
+
+# Package cache (downloaded from remote repos)
+packages/
+
+# Template cache (expanded templates) and resolved manifest
+.cache/
+
+# Lock file (transient — prevents concurrent installs)
+.install.lock
+
+# Console local data
+.console/
+
+# Template origin tracking (legacy, managed by aicontext CLI)
+.template-pkg-origins
+.template-mcp-origins
+
+# User environment variables (secrets — never commit)
+.env
+.templates-applied

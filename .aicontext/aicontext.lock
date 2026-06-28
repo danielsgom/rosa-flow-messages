@@ -1,0 +1,101 @@
+# aicontext.lock — auto-generated, do not edit manually
+
+packages:
+  __mcp_configs__:
+    timestamp: 2026-06-28T13:57:17Z
+    files:
+      - mcp:github-remote
+      - mcp:api-certification
+      - mcp:api-designer
+      - mcp:devhub
+      - mcp:geppetto
+      - .vscode/mcp.json
+  github_inditex_cac-moyaagentrules_main:
+    version: latest
+    source: github:inditex/cac-moyaagentrules
+    timestamp: 2026-06-28T13:57:16Z
+    select_hash: 4011950880
+    files:
+      - packages/github_inditex_cac-moyaagentrules_main/rules/api/rest-api-rules.md
+      - packages/github_inditex_cac-moyaagentrules_main/rules/quality/test-python-unit.md
+  moya:
+    version: latest
+    source: github:inditex/cac-moyaagentrules
+    timestamp: 2026-06-28T13:57:16Z
+    select_hash: 3874103687
+    files:
+      - packages/moya/skills/aidev-research/references/sub-agent-0-prompt.md
+      - packages/moya/skills/aidev-research/references/mcp-sub-agent-prompt.md
+      - packages/moya/skills/aidev-research/SKILL.md
+      - packages/moya/skills/aidev-research/assets/research-template.md
+      - packages/moya/skills/aidev-plan/references/phase-4-finalize.md
+      - packages/moya/skills/aidev-plan/references/interview_guide.md
+      - packages/moya/skills/aidev-plan/references/phase-1-initialize.md
+      - packages/moya/skills/aidev-plan/references/phase-2-interview.md
+      - packages/moya/skills/aidev-plan/references/phase-3-specs.md
+      - packages/moya/skills/aidev-plan/SKILL.md
+      - packages/moya/skills/aidev-plan/assets/template-plan-session.md
+      - packages/moya/skills/aidev-tech-plan/SKILL.md
+      - packages/moya/skills/aidev-tech-plan/assets/interview_guide.md
+      - packages/moya/skills/aidev-tech-plan/assets/tech-plan-template.md
+      - packages/moya/skills/aidev-explore/references/explore-agent-prompt.md
+      - packages/moya/skills/aidev-explore/references/agents-doc-contract.yml
+      - packages/moya/skills/aidev-explore/references/architecture-doc-contract.yml
+      - packages/moya/skills/aidev-explore/scripts/update-agents-local-dev.sh
+      - packages/moya/skills/aidev-explore/scripts/update-agents-architecture-context.sh
+      - packages/moya/skills/aidev-explore/scripts/detect-repo.sh
+      - packages/moya/skills/aidev-explore/scripts/validate-architecture-doc.sh
+      - packages/moya/skills/aidev-explore/scripts/validate-agents-doc.sh
+      - packages/moya/skills/aidev-explore/scripts/discover-repos.sh
+      - packages/moya/skills/aidev-explore/SKILL.md
+      - packages/moya/skills/gh-issue-create/references/bug-report-template.md
+      - packages/moya/skills/gh-issue-create/references/task-template.md
+      - packages/moya/skills/gh-issue-create/references/feature-request-template.md
+      - packages/moya/skills/gh-issue-create/SKILL.md
+      - packages/moya/skills/backlog-management/references/edit-workflow.md
+      - packages/moya/skills/backlog-management/references/create-workflow.md
+      - packages/moya/skills/backlog-management/scripts/gh-issue.sh
+      - packages/moya/skills/backlog-management/scripts/gh-project.sh
+      - packages/moya/skills/backlog-management/SKILL.md
+      - packages/moya/skills/backlog-management/assets/template-spike.md
+      - packages/moya/skills/backlog-management/assets/template-user-story.md
+      - packages/moya/skills/backlog-management/assets/template-bug.md
+      - packages/moya/skills/api-rest/references/structure-and-organization.md
+      - packages/moya/skills/api-rest/references/commons-metadata.md
+      - packages/moya/skills/api-rest/references/inheritance-polymorphism.md
+      - packages/moya/skills/api-rest/references/security-rules.md
+      - packages/moya/skills/api-rest/references/pagination-structure.md
+      - packages/moya/skills/api-rest/references/semantic-versioning.md
+      - packages/moya/skills/api-rest/references/domain-mapping-table.md
+      - packages/moya/skills/api-rest/references/http-status-codes.md
+      - packages/moya/skills/api-rest/references/schema-property-naming.md
+      - packages/moya/skills/api-rest/references/path-parameter-naming.md
+      - packages/moya/skills/api-rest/references/shared-error-definitions.md
+      - packages/moya/skills/api-rest/references/general-principles.md
+      - packages/moya/skills/api-rest/references/http-verb-mapping.md
+      - packages/moya/skills/api-rest/references/tags-usage.md
+      - packages/moya/skills/api-rest/references/example-enforcement.md
+      - packages/moya/skills/api-rest/references/readme-documentation.md
+      - packages/moya/skills/api-rest/SKILL.md
+      - packages/moya/skills/api-rest/assets/versioning.md
+      - packages/moya/skills/api-rest/assets/path-parameters.md
+      - packages/moya/skills/api-rest/assets/structure.md
+      - packages/moya/skills/api-rest/assets/discriminator.md
+      - packages/moya/skills/api-rest/assets/status-codes.md
+      - packages/moya/skills/api-rest/assets/shared-errors.md
+      - packages/moya/skills/api-rest/assets/pagination.md
+      - packages/moya/skills/api-rest/assets/readme.md
+      - packages/moya/skills/api-rest/assets/tags.md
+      - packages/moya/skills/api-rest/assets/schema-properties.md
+      - packages/moya/skills/api-rest/assets/operationid.md
+      - packages/moya/skills/api-rest/assets/example-enforcement.md
+      - packages/moya/skills/api-rest/assets/security.md
+      - packages/moya/skills/api-rest/assets/http-verbs.md
+      - packages/moya/prompts/probatio/probatio-python-unit.md
+      - packages/moya/mcps/github-remote.yaml
+      - packages/moya/mcps/devhub.yml
+      - packages/moya/mcps/geppetto.yml
+      - packages/moya/mcps/api-designer.yml
+      - packages/moya/mcps/api-certification.yml
+
+conflicts:
