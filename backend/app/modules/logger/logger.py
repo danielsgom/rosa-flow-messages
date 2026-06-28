@@ -95,15 +95,19 @@ class PrettyFormatter(logging.Formatter):
 
 
 
-def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:
-    """Get a configured logger instance with pretty terminal output."""
-    logger = logging.getLogger(name)
+def setup_logging():
+    """Configure the root logger with a pretty formatter."""
+    root_logger = logging.getLogger()
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = PrettyFormatter()
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
+    root_logger.setLevel(logging.INFO)
 
-    if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        formatter = PrettyFormatter()
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+
+def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:
+    """Get a configured logger instance. The root handler from setup_logging() handles all output."""
+    logger = logging.getLogger(name)
 
     if level:
         logger.setLevel(getattr(logging, level.upper(), logging.INFO))

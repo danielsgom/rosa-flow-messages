@@ -16,29 +16,15 @@ class PromptValidator:
         if not content or not content.strip():
             raise PromptValidationError("Prompt content is empty")
 
-        # Extract all headings from the document
-        headings = [
-            line.strip().lower()
-            for line in content.split("\n")
-            if line.strip().startswith("#")
-        ]
-        headings_text = " ".join(headings)
+        text = content.lower()
 
-        # Check required keywords are present in headings
-        required_keywords = [
-            "identidad",
-            "bio",
-            "límite",
-            "instruccion",
-        ]
-        missing = []
-        for kw in required_keywords:
-            if not any(kw in h for h in headings):
-                missing.append(kw)
+        # Check core persona identifiers are present
+        required_keywords = ["rosa", "nombre"]
+        missing = [kw for kw in required_keywords if kw not in text]
 
         if missing:
             raise PromptValidationError(
-                f"Missing required sections: {', '.join(missing)}"
+                f"Missing required keywords: {', '.join(missing)}"
             )
 
         # Rough token estimation (1 token ≈ 4 chars for English/Spanish)

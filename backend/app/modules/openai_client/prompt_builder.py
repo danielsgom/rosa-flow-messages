@@ -4,7 +4,7 @@ from typing import List, Dict
 class PromptBuilder:
     """Builds the message payload for OpenAI API."""
 
-    def __init__(self, max_history: int = 20):
+    def __init__(self, max_history: int = 100):
         self.max_history = max_history
 
     def build_messages(

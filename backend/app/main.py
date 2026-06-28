@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.modules.logger import get_logger
 from app.modules.chat_registry import ChatRegistry
 from app.modules.context import PromptLoader, PromptValidator, ConversationHistory, ContextManager
-from app.modules.openai_client import OpenAIClient, ResponseGenerator
+from app.modules.openai_client import OpenRouterClient, ResponseGenerator
 from app.modules.telegram import TelegramClientWrapper, MessageEventHandler, TelegramSender
 from app.modules.trigger import TriggerEngine
 from app.api.routes import ChatRegistryDep, TelegramClientDep, router as api_router
@@ -46,9 +46,9 @@ async def lifespan(app: FastAPI):
     context_manager = ContextManager(prompt_loader, prompt_validator, history)
     context_manager.initialize()
 
-    # Initialize OpenAI
-    openai_client = OpenAIClient(settings.openai_api_key)
-    generator = ResponseGenerator(openai_client, settings.openai_model)
+    # Initialize OpenRouter
+    openrouter_client = OpenRouterClient(settings.openrouter_api_key)
+    generator = ResponseGenerator(openrouter_client, settings.openrouter_model)
 
     # Initialize Telegram
     telegram_wrapper = TelegramClientWrapper(

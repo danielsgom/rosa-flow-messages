@@ -34,7 +34,7 @@ if [ ! -d ".venv" ]; then
 fi
 
 echo "🟢 Iniciando backend (FastAPI) en http://localhost:8000 ..."
-.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > /tmp/rosa-backend.log 2>&1 &
+.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/rosa-backend.log 2>&1 &
 BACKEND_PID=$!
 
 # Esperar a que FastAPI esté listo (max 15s)

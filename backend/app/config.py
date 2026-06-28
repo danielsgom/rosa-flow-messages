@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     telegram_phone: str
     telegram_session_name: str = "rosa_session"
 
-    # OpenAI
-    openai_api_key: str
-    openai_model: str = "gpt-5.5"
+    # OpenRouter
+    openrouter_api_key: str
+    openrouter_model: str = "deepseek/deepseek-v4-pro"
 
     # Delay
     response_delay_seconds_min: float = 2.0
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # System Prompt
     system_prompt_path: str = "app/templates/system_prompt.md"
-    system_prompt_max_tokens: int = 2000
+    system_prompt_max_tokens: int = 15000
 
     # Logging
     log_level: str = "INFO"

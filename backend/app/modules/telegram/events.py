@@ -14,9 +14,14 @@ class MessageEventHandler:
         self.client_wrapper = client_wrapper
         self.trigger_engine = trigger_engine
         self._my_id: int = 0
+        self._setup_done: bool = False
 
     async def setup(self):
         """Register event handlers and get our own user ID."""
+        if self._setup_done:
+            return
+        self._setup_done = True
+
         client = self.client_wrapper.get_client()
 
         me = await client.get_me()

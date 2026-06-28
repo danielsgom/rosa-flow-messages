@@ -7,7 +7,7 @@ from .models import Message
 class ConversationHistory:
     """Manages in-memory conversation history per chat."""
 
-    def __init__(self, max_messages: int = 20):
+    def __init__(self, max_messages: int = 100):
         self._history: Dict[int, Deque[Message]] = {}
         self._max_messages = max_messages
 
