@@ -91,13 +91,14 @@ class ChatRegistry:
             chat = self._chats.get(chat_id)
             return chat.conversation_status if chat else ConversationStatus.ACTIVE
 
-    async def start_conversation(self, chat_id: int) -> Optional[ChatInfo]:
+    async def start_conversation(self, chat_id: int, max_turns: int = 15) -> Optional[ChatInfo]:
         """Start a new conversation session for a chat."""
         async with self._lock:
             if chat_id not in self._chats:
                 return None
             self._chats[chat_id].session_started_at = datetime.now(timezone.utc)
             self._chats[chat_id].turn_count = 0
+            self._chats[chat_id].session_max_turns = max_turns
             return self._chats[chat_id]
 
     async def increment_turn(self, chat_id: int) -> Optional[ChatInfo]:
@@ -108,11 +109,9 @@ class ChatRegistry:
             self._chats[chat_id].turn_count += 1
             return self._chats[chat_id]
 
-    async def should_end_conversation(
-        self, chat_id: int, max_duration_minutes: int, max_turns: int
-    ) -> tuple[bool, str]:
+    async def should_end_conversation(self, chat_id: int) -> tuple[bool, str]:
         """
-        Check if a conversation should end based on time or turn limits.
+        Check if a conversation should end based on turn limit.
         Returns (should_end, reason).
         """
         async with self._lock:
@@ -120,12 +119,7 @@ class ChatRegistry:
             if not chat or not chat.session_started_at:
                 return False, ""
 
-            elapsed = (datetime.now(timezone.utc) - chat.session_started_at).total_seconds()
-            elapsed_minutes = elapsed / 60
-
-            if elapsed_minutes >= max_duration_minutes:
-                return True, f"duration ({elapsed_minutes:.1f}min >= {max_duration_minutes}min)"
-
+            max_turns = chat.session_max_turns or 15
             if chat.turn_count >= max_turns:
                 return True, f"turns ({chat.turn_count} >= {max_turns})"
 

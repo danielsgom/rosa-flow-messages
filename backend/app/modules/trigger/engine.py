@@ -1,4 +1,6 @@
 import asyncio
+import random
+import re
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
@@ -14,6 +16,17 @@ from .farewell_detector import is_farewell
 from .rules import TriggerRules
 
 logger = get_logger(__name__)
+
+_ASTERISK_RE = re.compile(r'\*[^*\n]+\*')
+
+
+def _sanitize_response(text: str) -> str:
+    """Remove any *asterisk-wrapped* fragments (leaked actions/notes) from the response."""
+    sanitized = _ASTERISK_RE.sub('', text)
+    # Collapse any double spaces or blank lines left behind
+    sanitized = re.sub(r'  +', ' ', sanitized)
+    sanitized = re.sub(r'\n{3,}', '\n\n', sanitized)
+    return sanitized.strip()
 
 
 class TriggerEngine:
@@ -53,9 +66,6 @@ class TriggerEngine:
         """
         Process an incoming message with debounce and session lifecycle.
         """
-        # 0. Remember last_message_at BEFORE register_or_update changes it
-        last_message_at_before = await self.chat_registry.get_last_message_at(chat_id)
-
         # 1. Register the chat
         chat = await self.chat_registry.register_or_update(
             chat_id=chat_id,
@@ -81,34 +91,21 @@ class TriggerEngine:
             await self.chat_registry.reset_conversation(chat_id)
             return TriggerResult(should_respond=False, reason="farewell_detected")
 
-        # 4. Session lifecycle: timeout, closed-reactivate, or new session
+        # 4. Session lifecycle: closed or new session
         status = await self.chat_registry.get_conversation_status(chat_id)
-        now = datetime.now(timezone.utc)
 
-        if (
-            last_message_at_before
-            and (now - last_message_at_before).total_seconds()
-            >= self.settings.conversation_timeout_hours * 3600
-        ):
-            # Timeout: start fresh session
-            logger.info(
-                f"Conversation timeout for chat {chat_id} "
-                f"({self.settings.conversation_timeout_hours}h since last message). "
-                f"Starting fresh session."
-            )
-            self.context_manager.clear_history(chat_id)
-            await self.chat_registry.start_conversation(chat_id)
-            await self.chat_registry.set_conversation_status(
-                chat_id, ConversationStatus.ACTIVE
-            )
-        elif status == ConversationStatus.CLOSED:
+        if status == ConversationStatus.CLOSED:
             # Session closed after farewell — ignore all further messages until restart
             logger.debug(f"Chat {chat_id} session is closed. Ignoring message.")
             return TriggerResult(should_respond=False, reason="session_closed")
         elif not chat.session_started_at:
-            # First ever session
-            logger.info(f"Starting first conversation session for chat {chat_id}")
-            await self.chat_registry.start_conversation(chat_id)
+            # First ever session — assign random turn limit
+            max_turns = random.randint(
+                self.settings.conversation_max_turns_min,
+                self.settings.conversation_max_turns_max,
+            )
+            logger.info(f"Starting first conversation session for chat {chat_id} (max {max_turns} turns)")
+            await self.chat_registry.start_conversation(chat_id, max_turns=max_turns)
 
         # 5. Check if auto-response is enabled
         if not chat.auto_enabled:
@@ -189,9 +186,7 @@ class TriggerEngine:
 
             # Check if conversation should end BEFORE generating response
             should_end, end_reason = await self.chat_registry.should_end_conversation(
-                chat_id,
-                self.settings.conversation_max_duration_minutes,
-                self.settings.conversation_max_turns,
+                chat_id
             )
 
             last_message = messages[-1]
@@ -210,19 +205,30 @@ class TriggerEngine:
                 )
 
             # Generate single response for all messages
-            # Farewell: use low reasoning effort + small token budget (short reply)
+            # Farewell: smaller token budget (short 2-3 line goodbye)
             try:
                 if should_end:
                     response_text = await self.generator.generate(
                         context_messages,
-                        max_tokens=2000,
-                        reasoning_effort="low",
+                        max_tokens=200,
                     )
                 else:
                     response_text = await self.generator.generate(context_messages)
             except Exception as exc:
                 logger.error(f"Failed to generate response: {exc}")
                 return
+
+            # Strip any asterisk-wrapped content leaked by the model
+            sanitized = _sanitize_response(response_text)
+            if sanitized != response_text:
+                logger.warning(
+                    f"Asterisk content removed from response for chat {chat_id}: "
+                    f"{repr(response_text[:120])}"
+                )
+            if not sanitized:
+                logger.error(f"Response was empty after sanitization for chat {chat_id}")
+                return
+            response_text = sanitized
 
             # Send response
             try:

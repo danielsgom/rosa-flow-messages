@@ -21,6 +21,7 @@ class ChatInfo(BaseModel):
     auto_enabled: bool = False
     conversation_status: ConversationStatus = ConversationStatus.ACTIVE
 
-    # Session tracking for conversation time/turn limits
+    # Session tracking for conversation turn limits
     session_started_at: Optional[datetime] = None
     turn_count: int = 0
+    session_max_turns: Optional[int] = None  # randomized per session (15-20)

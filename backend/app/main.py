@@ -43,7 +43,10 @@ async def lifespan(app: FastAPI):
     prompt_loader = PromptLoader(settings.system_prompt_path)
     prompt_validator = PromptValidator(settings.system_prompt_max_tokens)
     history = ConversationHistory()
-    context_manager = ContextManager(prompt_loader, prompt_validator, history)
+    context_manager = ContextManager(
+        prompt_loader, prompt_validator, history,
+        history_window=settings.context_history_window,
+    )
     context_manager.initialize()
 
     # Initialize OpenRouter

@@ -29,9 +29,11 @@ class ConversationHistory:
         if chat_id in self._history:
             self._history[chat_id].clear()
 
-    def get_for_openai(self, chat_id: int) -> List[dict]:
-        """Get messages formatted for OpenAI API."""
+    def get_for_openai(self, chat_id: int, limit: Optional[int] = None) -> list[dict]:
+        """Get messages formatted for OpenAI API, optionally limited to last N messages."""
         messages = self.get(chat_id)
+        if limit is not None:
+            messages = messages[-limit:]
         return [{"role": msg.role, "content": msg.content} for msg in messages]
 
     def has_messages(self, chat_id: int) -> bool:
