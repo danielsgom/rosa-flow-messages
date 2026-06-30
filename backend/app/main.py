@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize OpenRouter
     openrouter_client = OpenRouterClient(settings.openrouter_api_key)
-    generator = ResponseGenerator(openrouter_client, settings.openrouter_model)
+    generator = ResponseGenerator(openrouter_client, settings.openrouter_model, settings.openrouter_max_tokens)
 
     # Initialize Telegram
     telegram_wrapper = TelegramClientWrapper(

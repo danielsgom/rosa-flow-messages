@@ -52,7 +52,14 @@ class PrettyFormatter(logging.Formatter):
             f"{message}",
         ]
 
-        return " │ ".join(parts)
+        formatted = " │ ".join(parts)
+
+        # Append exception traceback if present
+        if record.exc_info:
+            exc_text = self.formatException(record.exc_info)
+            formatted = formatted + "\n" + exc_text
+
+        return formatted
 
     def _highlight_message(self, msg: str) -> str:
         """Highlight common patterns in log messages."""

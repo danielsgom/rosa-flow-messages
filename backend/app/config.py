@@ -15,11 +15,17 @@ class Settings(BaseSettings):
     # OpenRouter
     openrouter_api_key: str
     openrouter_model: str = "deepseek/deepseek-v4-pro"
+    openrouter_max_tokens: int = 8000
 
     # Delay
     response_delay_seconds_min: float = 2.0
     response_delay_seconds_max: float = 12.0
     response_delay_enabled: bool = True
+
+    # Conversation Session Limits (cost control)
+    conversation_max_duration_minutes: int = 15
+    conversation_max_turns: int = 12
+    conversation_timeout_hours: int = 4
 
     # System Prompt
     system_prompt_path: str = "app/templates/system_prompt.md"

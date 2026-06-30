@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
 from app.modules.logger import get_logger
@@ -51,12 +51,11 @@ class TriggerEngine:
         date: Optional[datetime] = None,
     ) -> TriggerResult:
         """
-        Process an incoming message with debounce.
-        
-        Messages are accumulated during the delay window. If a new message
-        arrives before the timer expires, the timer resets and messages
-        are batched into a single OpenAI call.
+        Process an incoming message with debounce and session lifecycle.
         """
+        # 0. Remember last_message_at BEFORE register_or_update changes it
+        last_message_at_before = await self.chat_registry.get_last_message_at(chat_id)
+
         # 1. Register the chat
         chat = await self.chat_registry.register_or_update(
             chat_id=chat_id,
@@ -64,7 +63,7 @@ class TriggerEngine:
             full_name=full_name,
             username=username,
             last_message=text,
-            last_date=date or datetime.now(),
+            last_date=date or datetime.now(timezone.utc),
         )
 
         # 2. Ignore our own outbound messages
@@ -78,15 +77,38 @@ class TriggerEngine:
             await self.chat_registry.set_conversation_status(
                 chat_id, ConversationStatus.CLOSED
             )
+            self.context_manager.clear_history(chat_id)
+            await self.chat_registry.reset_conversation(chat_id)
             return TriggerResult(should_respond=False, reason="farewell_detected")
 
-        # 4. Reactivate if conversation was closed and new message arrives
+        # 4. Session lifecycle: timeout, closed-reactivate, or new session
         status = await self.chat_registry.get_conversation_status(chat_id)
-        if status == ConversationStatus.CLOSED:
-            logger.info(f"Reactivating conversation for chat {chat_id}")
+        now = datetime.now(timezone.utc)
+
+        if (
+            last_message_at_before
+            and (now - last_message_at_before).total_seconds()
+            >= self.settings.conversation_timeout_hours * 3600
+        ):
+            # Timeout: start fresh session
+            logger.info(
+                f"Conversation timeout for chat {chat_id} "
+                f"({self.settings.conversation_timeout_hours}h since last message). "
+                f"Starting fresh session."
+            )
+            self.context_manager.clear_history(chat_id)
+            await self.chat_registry.start_conversation(chat_id)
             await self.chat_registry.set_conversation_status(
                 chat_id, ConversationStatus.ACTIVE
             )
+        elif status == ConversationStatus.CLOSED:
+            # Session closed after farewell — ignore all further messages until restart
+            logger.debug(f"Chat {chat_id} session is closed. Ignoring message.")
+            return TriggerResult(should_respond=False, reason="session_closed")
+        elif not chat.session_started_at:
+            # First ever session
+            logger.info(f"Starting first conversation session for chat {chat_id}")
+            await self.chat_registry.start_conversation(chat_id)
 
         # 5. Check if auto-response is enabled
         if not chat.auto_enabled:
@@ -110,31 +132,31 @@ class TriggerEngine:
                 except asyncio.CancelledError:
                     pass
                 logger.debug(f"Debounce timer reset for chat {chat_id}")
-            
+
             # Add message to pending buffer
             if chat_id not in self._pending_messages:
                 self._pending_messages[chat_id] = []
             self._pending_messages[chat_id].append(text)
-            
+
             # Calculate delay
             delay = calculate_delay(
                 self.settings.response_delay_seconds_min,
                 self.settings.response_delay_seconds_max,
                 self.settings.response_delay_enabled,
             )
-            
+
             logger.info(
                 f"⏳ Debounce started for chat {chat_id}: "
                 f"{len(self._pending_messages[chat_id])} message(s), "
                 f"waiting {delay:.1f}s..."
             )
-            
+
             # Start new timer
             task = asyncio.create_task(
                 self._process_after_delay(chat_id, delay)
             )
             self._pending_tasks[chat_id] = task
-            
+
             return TriggerResult(
                 should_respond=False,
                 reason="debounce_waiting",
@@ -145,50 +167,89 @@ class TriggerEngine:
         """Process accumulated messages after the debounce delay expires."""
         try:
             await asyncio.sleep(delay)
-            
+
             async with self._lock:
                 # Get accumulated messages
                 messages = self._pending_messages.get(chat_id, [])
                 if not messages:
                     return
-                
+
                 # Clear state
                 self._pending_messages.pop(chat_id, None)
                 self._pending_tasks.pop(chat_id, None)
-            
+
             logger.info(
                 f"⏰ Debounce expired for chat {chat_id}. "
                 f"Processing {len(messages)} accumulated message(s)."
             )
-            
+
             # Add ALL accumulated messages to history individually
             for msg in messages:
                 self.context_manager.add_to_history(chat_id, "user", msg)
-            
-            # Build context: history already contains all messages.
-            # Pass the last message as 'new_message' so build_context includes it properly
+
+            # Check if conversation should end BEFORE generating response
+            should_end, end_reason = await self.chat_registry.should_end_conversation(
+                chat_id,
+                self.settings.conversation_max_duration_minutes,
+                self.settings.conversation_max_turns,
+            )
+
             last_message = messages[-1]
-            context_messages = self.context_manager.build_context(chat_id, last_message)
-            
+
+            if should_end:
+                logger.info(
+                    f"Conversation ending for chat {chat_id}: {end_reason}. "
+                    "Injecting farewell hint."
+                )
+                context_messages = self.context_manager.build_farewell_context(
+                    chat_id, last_message
+                )
+            else:
+                context_messages = self.context_manager.build_context(
+                    chat_id, last_message
+                )
+
             # Generate single response for all messages
+            # Farewell: use low reasoning effort + small token budget (short reply)
             try:
-                response_text = await self.generator.generate(context_messages)
+                if should_end:
+                    response_text = await self.generator.generate(
+                        context_messages,
+                        max_tokens=2000,
+                        reasoning_effort="low",
+                    )
+                else:
+                    response_text = await self.generator.generate(context_messages)
             except Exception as exc:
                 logger.error(f"Failed to generate response: {exc}")
                 return
-            
+
             # Send response
             try:
                 await self.sender.send_message(chat_id, response_text)
                 self.rules.record_bot_message(chat_id)
-                self.context_manager.add_to_history(chat_id, "assistant", response_text)
+                self.context_manager.add_to_history(
+                    chat_id, "assistant", response_text
+                )
+
+                if should_end:
+                    # Close conversation after farewell: clean state for cost savings
+                    logger.info(f"Farewell sent to chat {chat_id}. Closing session.")
+                    await self.chat_registry.set_conversation_status(
+                        chat_id, ConversationStatus.CLOSED
+                    )
+                    self.context_manager.clear_history(chat_id)
+                    await self.chat_registry.reset_conversation(chat_id)
+                else:
+                    await self.chat_registry.increment_turn(chat_id)
+
                 logger.info(
                     f"✅ Sent batched response to chat {chat_id} "
                     f"({len(messages)} msg → 1 response, {len(response_text)} chars)"
                 )
             except Exception as exc:
                 logger.error(f"Failed to send message: {exc}")
-                
+
         except asyncio.CancelledError:
             logger.debug(f"Debounce timer cancelled for chat {chat_id}")
             raise

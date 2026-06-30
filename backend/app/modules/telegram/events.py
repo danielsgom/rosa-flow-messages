@@ -34,6 +34,14 @@ class MessageEventHandler:
 
     async def _handle_message(self, event):
         """Process a single incoming message event."""
+        try:
+            await self._process_message_event(event)
+        except Exception as exc:
+            logger.error(f"Error handling message event: {exc}", exc_info=True)
+            raise
+
+    async def _process_message_event(self, event):
+        """Internal message processing logic."""
         message = event.message
 
         if not message.text:

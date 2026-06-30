@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from .models import ChatInfo, ConversationStatus
@@ -33,7 +33,7 @@ class ChatRegistry:
                     chat.username = username
                 if last_message:
                     chat.last_message_preview = last_message
-                chat.last_message_at = last_date or datetime.now()
+                chat.last_message_at = last_date or datetime.now(timezone.utc)
             else:
                 chat = ChatInfo(
                     chat_id=chat_id,
@@ -41,7 +41,7 @@ class ChatRegistry:
                     full_name=full_name,
                     username=username,
                     last_message_preview=last_message,
-                    last_message_at=last_date or datetime.now(),
+                    last_message_at=last_date or datetime.now(timezone.utc),
                 )
                 self._chats[chat_id] = chat
             return chat
@@ -90,3 +90,58 @@ class ChatRegistry:
         async with self._lock:
             chat = self._chats.get(chat_id)
             return chat.conversation_status if chat else ConversationStatus.ACTIVE
+
+    async def start_conversation(self, chat_id: int) -> Optional[ChatInfo]:
+        """Start a new conversation session for a chat."""
+        async with self._lock:
+            if chat_id not in self._chats:
+                return None
+            self._chats[chat_id].session_started_at = datetime.now(timezone.utc)
+            self._chats[chat_id].turn_count = 0
+            return self._chats[chat_id]
+
+    async def increment_turn(self, chat_id: int) -> Optional[ChatInfo]:
+        """Increment the turn count for a chat."""
+        async with self._lock:
+            if chat_id not in self._chats:
+                return None
+            self._chats[chat_id].turn_count += 1
+            return self._chats[chat_id]
+
+    async def should_end_conversation(
+        self, chat_id: int, max_duration_minutes: int, max_turns: int
+    ) -> tuple[bool, str]:
+        """
+        Check if a conversation should end based on time or turn limits.
+        Returns (should_end, reason).
+        """
+        async with self._lock:
+            chat = self._chats.get(chat_id)
+            if not chat or not chat.session_started_at:
+                return False, ""
+
+            elapsed = (datetime.now(timezone.utc) - chat.session_started_at).total_seconds()
+            elapsed_minutes = elapsed / 60
+
+            if elapsed_minutes >= max_duration_minutes:
+                return True, f"duration ({elapsed_minutes:.1f}min >= {max_duration_minutes}min)"
+
+            if chat.turn_count >= max_turns:
+                return True, f"turns ({chat.turn_count} >= {max_turns})"
+
+            return False, ""
+
+    async def reset_conversation(self, chat_id: int) -> Optional[ChatInfo]:
+        """Reset session tracking for a chat."""
+        async with self._lock:
+            if chat_id not in self._chats:
+                return None
+            self._chats[chat_id].session_started_at = None
+            self._chats[chat_id].turn_count = 0
+            return self._chats[chat_id]
+
+    async def get_last_message_at(self, chat_id: int) -> Optional[datetime]:
+        """Get the timestamp of the last message in a chat."""
+        async with self._lock:
+            chat = self._chats.get(chat_id)
+            return chat.last_message_at if chat else None

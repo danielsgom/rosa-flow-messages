@@ -31,6 +31,8 @@ class OpenRouterClient:
             "max_tokens": request.max_tokens,
             "messages": request.messages,
         }
+        if request.reasoning_effort:
+            payload["reasoning"] = {"effort": request.reasoning_effort}
 
         for attempt in range(max_retries + 1):
             try:

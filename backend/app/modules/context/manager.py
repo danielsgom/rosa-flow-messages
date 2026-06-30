@@ -40,6 +40,25 @@ class ContextManager:
 
         return messages
 
+    def build_farewell_context(self, chat_id: int, new_message: Optional[str] = None) -> List[dict]:
+        """
+        Build context with a farewell hint injected as the final system message.
+        The AI will naturally steer the response toward a goodbye using its
+        existing personality (excuses: gym, amigas, sesión de fotos, batería, etc.)
+        without sounding like a timer ran out.
+        """
+        messages = self.build_context(chat_id, new_message)
+
+        farewell_hint = (
+            "Llevas un rato hablando con esta persona (unos 15-20 min). "
+            "Es momento de despedirte de forma natural porque tienes otras "
+            "cosas que hacer (gym, amigas, sesión de fotos, contenido VIP...). "
+            "Despídete con cariño, usa una excusa creíble y dile que habláis luego. "
+            "NO digas que se acabó el tiempo. Suena natural, como Rosa de verdad."
+        )
+        messages.append({"role": "system", "content": farewell_hint})
+        return messages
+
     def add_to_history(self, chat_id: int, role: str, content: str) -> None:
         """Add a message to the conversation history."""
         self.history.add(chat_id, role, content)
