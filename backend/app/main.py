@@ -1,6 +1,7 @@
 import asyncio
 import signal
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI
@@ -11,9 +12,10 @@ from app.modules.logger import get_logger
 from app.modules.chat_registry import ChatRegistry
 from app.modules.context import PromptLoader, PromptValidator, ConversationHistory, ContextManager
 from app.modules.openai_client import OpenRouterClient, ResponseGenerator
+from app.modules.photo_registry import PhotoRegistry
 from app.modules.telegram import TelegramClientWrapper, MessageEventHandler, TelegramSender
 from app.modules.trigger import TriggerEngine
-from app.api.routes import ChatRegistryDep, TelegramClientDep, router as api_router
+from app.api.routes import ChatRegistryDep, TelegramClientDep, PhotoRegistryDep, router as api_router
 from app.logger_config import setup_logging
 
 logger = get_logger(__name__)
@@ -41,11 +43,16 @@ async def lifespan(app: FastAPI):
 
     # Initialize Context Manager
     prompt_loader = PromptLoader(settings.system_prompt_path)
+    examples_loader = PromptLoader(settings.system_prompt_examples_path)
     prompt_validator = PromptValidator(settings.system_prompt_max_tokens)
     history = ConversationHistory()
     context_manager = ContextManager(
-        prompt_loader, prompt_validator, history,
+        prompt_loader,
+        prompt_validator,
+        history,
         history_window=settings.context_history_window,
+        examples_content=examples_loader.load_optional(),
+        heat_detection=settings.conversation_heat_detection,
     )
     context_manager.initialize()
 
@@ -65,6 +72,12 @@ async def lifespan(app: FastAPI):
 
     sender = TelegramSender(telegram_wrapper)
 
+    # Initialize Photo Registry
+    photos_dir = Path(settings.photos_dir)
+    photo_registry = PhotoRegistry(photos_dir)
+    PhotoRegistryDep.registry = photo_registry
+    logger.info(f"📸 Photo registry initialized: {photos_dir.resolve()} ({len(photo_registry.list_photos())} photos)")
+
     # Initialize Trigger Engine
     trigger_engine = TriggerEngine(
         chat_registry=chat_registry,
@@ -72,6 +85,7 @@ async def lifespan(app: FastAPI):
         generator=generator,
         sender=sender,
         settings=settings,
+        photo_registry=photo_registry,
     )
 
     # Setup message handlers

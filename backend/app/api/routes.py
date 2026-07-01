@@ -1,14 +1,26 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+import re
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.modules.logger import get_logger
 from app.modules.chat_registry import ChatRegistry, ConversationStatus
+from app.modules.photo_registry import PhotoRegistry
 from app.modules.telegram import TelegramClientWrapper
-from app.api.schemas import ChatResponse, ToggleRequest, ToggleResponse, SyncResponse
+from app.api.schemas import (
+    ChatResponse, ToggleRequest, ToggleResponse, SyncResponse,
+    PhotoResponse, PhotoListResponse, PhotoToggleRequest,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api")
+
+_SAFE_FILENAME_RE = re.compile(r'^[a-zA-Z0-9_\-\.]+$')
+_ALLOWED_MIME_PREFIXES = ("image/",)
+_MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 class ChatRegistryDep:
@@ -21,6 +33,11 @@ class TelegramClientDep:
     client: Optional[TelegramClientWrapper] = None
 
 
+class PhotoRegistryDep:
+    """Simple dependency container for photo registry."""
+    registry: Optional[PhotoRegistry] = None
+
+
 async def get_chat_registry() -> ChatRegistry:
     if ChatRegistryDep.registry is None:
         raise HTTPException(status_code=500, detail="Chat registry not initialized")
@@ -31,6 +48,12 @@ async def get_telegram_client() -> TelegramClientWrapper:
     if TelegramClientDep.client is None:
         raise HTTPException(status_code=500, detail="Telegram client not initialized")
     return TelegramClientDep.client
+
+
+async def get_photo_registry() -> PhotoRegistry:
+    if PhotoRegistryDep.registry is None:
+        raise HTTPException(status_code=500, detail="Photo registry not initialized")
+    return PhotoRegistryDep.registry
 
 
 @router.get("/chats", response_model=List[ChatResponse])
@@ -115,3 +138,83 @@ async def toggle_chat(
         auto_enabled=chat.auto_enabled,
         conversation_status=chat.conversation_status.value,
     )
+
+
+# ---------------------------------------------------------------------------
+# Photo endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/photos", response_model=PhotoListResponse)
+async def list_photos(registry: PhotoRegistry = Depends(get_photo_registry)):
+    """List all photos with enabled status."""
+    photos = registry.list_photos()
+    return PhotoListResponse(
+        total=len(photos),
+        photos=[PhotoResponse(**p.model_dump()) for p in photos],
+    )
+
+
+@router.post("/photos", response_model=PhotoResponse, status_code=201)
+async def upload_photo(
+    file: UploadFile = File(...),
+    registry: PhotoRegistry = Depends(get_photo_registry),
+):
+    """Upload a new photo to the pool."""
+    content_type = file.content_type or ""
+    if not any(content_type.startswith(p) for p in _ALLOWED_MIME_PREFIXES):
+        raise HTTPException(status_code=415, detail="Only image files are allowed")
+
+    data = await file.read()
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 20 MB limit")
+
+    filename = file.filename or "upload.jpg"
+    if not _SAFE_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    photo = registry.save_photo(filename, data)
+    return PhotoResponse(**photo.model_dump())
+
+
+@router.delete("/photos/{filename}", status_code=204)
+async def delete_photo(
+    filename: str,
+    registry: PhotoRegistry = Depends(get_photo_registry),
+):
+    """Delete a photo from the pool."""
+    if not _SAFE_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if not registry.delete_photo(filename):
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+
+@router.patch("/photos/{filename}/toggle", response_model=PhotoResponse)
+async def toggle_photo(
+    filename: str,
+    request: PhotoToggleRequest,
+    registry: PhotoRegistry = Depends(get_photo_registry),
+):
+    """Enable or disable a photo for sending."""
+    if not _SAFE_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    photo = registry.set_enabled(filename, request.enabled)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return PhotoResponse(**photo.model_dump())
+
+
+@router.get("/photos/{filename}/file")
+async def serve_photo(
+    filename: str,
+    registry: PhotoRegistry = Depends(get_photo_registry),
+):
+    """Serve the actual image file."""
+    if not _SAFE_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path: Path = registry.photos_dir / filename
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="Photo not found")
+    # Ensure the resolved path is still inside photos_dir (extra safety)
+    if not str(path.resolve()).startswith(str(registry.photos_dir.resolve())):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return FileResponse(str(path))

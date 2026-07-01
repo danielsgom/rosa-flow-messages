@@ -1,6 +1,7 @@
 import React from 'react';
-import { useChats } from '../hooks/useChats';
 import { ChatList } from '../components/ChatList';
+import { PhotoManager } from '../components/PhotoManager';
+import { useChats } from '../hooks/useChats';
 
 export const HomePage: React.FC = () => {
   const { chats, loading, syncLoading, error, toggleAuto, syncWithTelegram } = useChats();
@@ -70,6 +71,11 @@ export const HomePage: React.FC = () => {
 
         {/* Chat List */}
         <ChatList chats={chats} onToggle={toggleAuto} loading={loading || syncLoading} />
+
+        {/* Photo Manager */}
+        <div className="mt-6">
+          <PhotoManager />
+        </div>
       </div>
     </div>
   );

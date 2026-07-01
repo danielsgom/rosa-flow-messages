@@ -2,31 +2,57 @@ import asyncio
 import random
 import re
 from datetime import datetime, timezone
-from typing import Optional, Dict, List
+from pathlib import Path
+from typing import Optional, Dict, List, Tuple
 
 from app.modules.logger import get_logger
 from app.config import Settings
 from app.modules.chat_registry import ChatRegistry, ConversationStatus
 from app.modules.context import ContextManager
+from app.modules.context.manager import _detect_heat
 from app.modules.openai_client import ResponseGenerator
+from app.modules.photo_registry import PhotoRegistry
 from app.modules.telegram import TelegramSender
 from .models import TriggerResult
 from .delay import calculate_delay
 from .farewell_detector import is_farewell
+from .photo_request_detector import is_photo_request
 from .rules import TriggerRules
 
 logger = get_logger(__name__)
 
 _ASTERISK_RE = re.compile(r'\*[^*\n]+\*')
+_PARENTHETICAL_RE = re.compile(r'\*?\(.{5,}?\)', re.DOTALL)
+_OPEN_PAREN_RE = re.compile(r'\s*\*?\([^)]{5,}$', re.DOTALL)  # unclosed paren at end
 
 
 def _sanitize_response(text: str) -> str:
-    """Remove any *asterisk-wrapped* fragments (leaked actions/notes) from the response."""
-    sanitized = _ASTERISK_RE.sub('', text)
-    # Collapse any double spaces or blank lines left behind
-    sanitized = re.sub(r'  +', ' ', sanitized)
-    sanitized = re.sub(r'\n{3,}', '\n\n', sanitized)
-    return sanitized.strip()
+    """Remove asterisk-wrapped text, parenthetical content (closed and unclosed)."""
+    text = _ASTERISK_RE.sub('', text)
+    text = _PARENTHETICAL_RE.sub('', text)
+    text = _OPEN_PAREN_RE.sub('', text)  # strip unclosed paren tails
+    text = re.sub(r'  +', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _enforce_message_limit(text: str, max_blocks: int = 2) -> str:
+    """Hard-truncate to at most max_blocks double-newline-separated messages."""
+    blocks = [b.strip() for b in text.split('\n\n') if b.strip()]
+    return '\n\n'.join(blocks[:max_blocks])
+
+
+def _calc_max_tokens(user_message: str, context_type: str) -> int:
+    if context_type == 'photo_hint':
+        return 60
+    if context_type in ('farewell', 'winding_down'):
+        return 150
+    length = len(user_message)
+    if length < 15:
+        return 80
+    if length < 80:
+        return 130
+    return 200
 
 
 class TriggerEngine:
@@ -39,12 +65,14 @@ class TriggerEngine:
         generator: ResponseGenerator,
         sender: TelegramSender,
         settings: Settings,
+        photo_registry: Optional[PhotoRegistry] = None,
     ):
         self.chat_registry = chat_registry
         self.context_manager = context_manager
         self.generator = generator
         self.sender = sender
         self.settings = settings
+        self.photo_registry = photo_registry
         self.rules = TriggerRules()
         
         # Debounce state per chat
@@ -160,18 +188,50 @@ class TriggerEngine:
                 delay_seconds=delay,
             )
 
+    def _check_photo(
+        self, turn_count: int, photos_sent: int, last_photo_turn: int,
+        sent_filenames: list, force_explicit: bool = False, heat_hot: bool = False
+    ) -> Tuple[bool, Optional[Path], bool]:
+        """
+        Decide whether to send a photo this turn.
+        Returns (will_send, photo_path, limit_reached).
+        force_explicit: user explicitly requested a photo → skip gap + probability.
+        heat_hot: sexting heat is high → skip probability but KEEP gap (prevents back-to-back).
+        """
+        if self.photo_registry is None:
+            return False, None, False
+
+        if photos_sent >= self.settings.photo_max_per_session:
+            return False, None, True
+
+        gap = getattr(self.settings, 'photo_min_turns_gap', 8)
+
+        if force_explicit:
+            # Explicit request: bypass gap and probability
+            pass
+        else:
+            if turn_count < 3:
+                return False, None, False
+            if turn_count - last_photo_turn < gap:
+                return False, None, False
+            if not heat_hot and random.random() >= self.settings.photo_send_probability:
+                return False, None, False
+
+        photo_path = self.photo_registry.get_random_enabled_photo(exclude=sent_filenames)
+        if photo_path is None:
+            return False, None, False
+
+        return True, photo_path, False
+
     async def _process_after_delay(self, chat_id: int, delay: float):
         """Process accumulated messages after the debounce delay expires."""
         try:
             await asyncio.sleep(delay)
 
             async with self._lock:
-                # Get accumulated messages
                 messages = self._pending_messages.get(chat_id, [])
                 if not messages:
                     return
-
-                # Clear state
                 self._pending_messages.pop(chat_id, None)
                 self._pending_tasks.pop(chat_id, None)
 
@@ -180,78 +240,139 @@ class TriggerEngine:
                 f"Processing {len(messages)} accumulated message(s)."
             )
 
-            # Add ALL accumulated messages to history individually
             for msg in messages:
                 self.context_manager.add_to_history(chat_id, "user", msg)
 
-            # Check if conversation should end BEFORE generating response
-            should_end, end_reason = await self.chat_registry.should_end_conversation(
-                chat_id
-            )
-
             last_message = messages[-1]
 
-            if should_end:
-                logger.info(
-                    f"Conversation ending for chat {chat_id}: {end_reason}. "
-                    "Injecting farewell hint."
+            # --- Chat state ---
+            chat = await self.chat_registry.get(chat_id)
+            turn_count = chat.turn_count if chat else 0
+            photos_sent = chat.photos_sent if chat else 0
+            last_photo_turn = chat.last_photo_turn if chat else 0
+            sent_filenames = list(chat.photos_sent_filenames) if chat else []
+            status = chat.conversation_status if chat else None
+
+            # --- CLOSING state: allow a few more natural replies then close ---
+            if status and status == ConversationStatus.CLOSING:
+                context_messages = self.context_manager.build_context(
+                    chat_id, last_message, turn_count
                 )
+                try:
+                    response_text = await self.generator.generate(
+                        context_messages, max_tokens=_calc_max_tokens(last_message, "closing")
+                    )
+                except Exception as exc:
+                    logger.error(f"Failed to generate closing response: {exc}")
+                    return
+
+                response_text = _enforce_message_limit(_sanitize_response(response_text))
+                if not response_text:
+                    return
+
+                try:
+                    await self.sender.send_message(chat_id, response_text)
+                    self.rules.record_bot_message(chat_id)
+                    self.context_manager.add_to_history(chat_id, "assistant", response_text)
+
+                    remaining = await self.chat_registry.decrement_closing(chat_id)
+                    if remaining <= 0:
+                        logger.info(f"Closing sequence done for chat {chat_id}. Shutting session.")
+                        await self.chat_registry.set_conversation_status(
+                            chat_id, ConversationStatus.CLOSED
+                        )
+                        self.context_manager.clear_history(chat_id)
+                        await self.chat_registry.reset_conversation(chat_id)
+                    else:
+                        logger.info(f"Closing turn sent to chat {chat_id} ({remaining} left).")
+                except Exception as exc:
+                    logger.error(f"Failed to send closing message: {exc}")
+                return
+
+            # --- Normal / phase-based flow ---
+            phase = await self.chat_registry.get_conversation_phase(chat_id)
+            photo_forced = is_photo_request(last_message)
+
+            # Also trigger photo when sexting heat is very high (but gap still applies)
+            heat_hot = False
+            if not photo_forced:
+                recent = self.context_manager.history.get_for_openai(chat_id, limit=6)
+                if _detect_heat(recent) == "hot":
+                    heat_hot = True
+
+            will_send_photo, photo_path, photo_limit_reached = self._check_photo(
+                turn_count, photos_sent, last_photo_turn, sent_filenames,
+                force_explicit=photo_forced, heat_hot=heat_hot
+            )
+
+            # Choose context type
+            if phase == "farewell":
+                context_type = "farewell"
                 context_messages = self.context_manager.build_farewell_context(
-                    chat_id, last_message
+                    chat_id, last_message, turn_count
+                )
+            elif phase == "winding_down":
+                context_type = "winding_down"
+                context_messages = self.context_manager.build_context_winding_down(
+                    chat_id, last_message, turn_count
+                )
+            elif will_send_photo:
+                context_type = "photo_hint"
+                context_messages = self.context_manager.build_context_with_photo_hint(
+                    chat_id, last_message, turn_count
+                )
+            elif photo_limit_reached:
+                context_type = "normal"
+                context_messages = self.context_manager.build_context_with_photo_limit_hint(
+                    chat_id, last_message, turn_count
                 )
             else:
+                context_type = "normal"
                 context_messages = self.context_manager.build_context(
-                    chat_id, last_message
+                    chat_id, last_message, turn_count
                 )
 
-            # Generate single response for all messages
-            # Farewell: smaller token budget (short 2-3 line goodbye)
+            max_tok = _calc_max_tokens(last_message, context_type)
+
             try:
-                if should_end:
-                    response_text = await self.generator.generate(
-                        context_messages,
-                        max_tokens=200,
-                    )
-                else:
-                    response_text = await self.generator.generate(context_messages)
+                response_text = await self.generator.generate(context_messages, max_tokens=max_tok)
             except Exception as exc:
                 logger.error(f"Failed to generate response: {exc}")
                 return
 
-            # Strip any asterisk-wrapped content leaked by the model
-            sanitized = _sanitize_response(response_text)
-            if sanitized != response_text:
-                logger.warning(
-                    f"Asterisk content removed from response for chat {chat_id}: "
-                    f"{repr(response_text[:120])}"
-                )
-            if not sanitized:
+            # Post-processing: remove asterisks and parentheticals only
+            response_text = _sanitize_response(response_text)
+
+            if not response_text:
                 logger.error(f"Response was empty after sanitization for chat {chat_id}")
                 return
-            response_text = sanitized
 
-            # Send response
+            # Send text
             try:
                 await self.sender.send_message(chat_id, response_text)
                 self.rules.record_bot_message(chat_id)
-                self.context_manager.add_to_history(
-                    chat_id, "assistant", response_text
-                )
+                self.context_manager.add_to_history(chat_id, "assistant", response_text)
 
-                if should_end:
-                    # Close conversation after farewell: clean state for cost savings
-                    logger.info(f"Farewell sent to chat {chat_id}. Closing session.")
-                    await self.chat_registry.set_conversation_status(
-                        chat_id, ConversationStatus.CLOSED
-                    )
-                    self.context_manager.clear_history(chat_id)
-                    await self.chat_registry.reset_conversation(chat_id)
+                # Send photo if decided
+                if will_send_photo and photo_path:
+                    try:
+                        await asyncio.sleep(random.uniform(1.0, 2.5))
+                        await self.sender.send_photo(chat_id, photo_path)
+                        await self.chat_registry.increment_photos_sent(chat_id, filename=photo_path.name)
+                        await self.chat_registry.update_last_photo_turn(chat_id, turn_count)
+                        logger.info(f"📸 Photo sent to chat {chat_id}: {photo_path.name}")
+                    except Exception as exc:
+                        logger.error(f"Failed to send photo to chat {chat_id}: {exc}")
+
+                if phase == "farewell":
+                    logger.info(f"Farewell sent to chat {chat_id}. Entering CLOSING state.")
+                    await self.chat_registry.enter_closing(chat_id, turns=2)
                 else:
                     await self.chat_registry.increment_turn(chat_id)
 
                 logger.info(
-                    f"✅ Sent batched response to chat {chat_id} "
-                    f"({len(messages)} msg → 1 response, {len(response_text)} chars)"
+                    f"✅ Sent response to chat {chat_id} "
+                    f"(phase={phase}, type={context_type}, {len(response_text)} chars)"
                 )
             except Exception as exc:
                 logger.error(f"Failed to send message: {exc}")

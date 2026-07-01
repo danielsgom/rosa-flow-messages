@@ -1,5 +1,6 @@
 import asyncio
 import random
+from pathlib import Path
 
 from app.modules.logger import get_logger
 
@@ -46,3 +47,13 @@ class TelegramSender:
             except Exception as exc:
                 logger.error(f"Failed to send message to {entity}: {exc}")
                 raise
+
+    async def send_photo(self, entity, photo_path: Path, caption: str = "") -> None:
+        """Send a photo file to a Telegram entity."""
+        client = self.client_wrapper.get_client()
+        try:
+            await client.send_file(entity, str(photo_path), caption=caption)
+            logger.info(f"Photo sent to {entity}: {photo_path.name}")
+        except Exception as exc:
+            logger.error(f"Failed to send photo to {entity}: {exc}")
+            raise

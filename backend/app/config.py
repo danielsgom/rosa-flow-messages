@@ -29,7 +29,17 @@ class Settings(BaseSettings):
 
     # System Prompt
     system_prompt_path: str = "app/templates/system_prompt.md"
+    system_prompt_examples_path: str = "app/templates/system_prompt_examples.md"
     system_prompt_max_tokens: int = 15000
+
+    # Photos
+    photos_dir: str = "photos"
+    photo_send_probability: float = 0.20
+    photo_max_per_session: int = 2
+    photo_min_turns_gap: int = 8
+
+    # Conversation naturalness
+    conversation_heat_detection: bool = True
 
     # Logging
     log_level: str = "INFO"

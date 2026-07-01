@@ -33,6 +33,15 @@ class PromptLoader:
         self._content = None
         return self.load()
 
+    def load_optional(self) -> str:
+        """Load file content, returning empty string if file does not exist."""
+        if not self.file_path.exists():
+            return ""
+        try:
+            return self.file_path.read_text(encoding="utf-8").strip()
+        except Exception:
+            return ""
+
     @property
     def content(self) -> Optional[str]:
         """Get cached content without reloading."""

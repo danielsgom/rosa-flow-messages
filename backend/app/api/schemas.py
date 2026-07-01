@@ -32,3 +32,22 @@ class SyncResponse(BaseModel):
     synced: int
     total: int
     chats: List[ChatResponse]
+
+
+class PhotoResponse(BaseModel):
+    """Schema for a single photo."""
+    filename: str
+    size_bytes: int
+    enabled: bool
+    url: str
+
+
+class PhotoListResponse(BaseModel):
+    """Schema for photo list response."""
+    total: int
+    photos: List[PhotoResponse]
+
+
+class PhotoToggleRequest(BaseModel):
+    """Schema for enabling/disabling a photo."""
+    enabled: bool

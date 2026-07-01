@@ -8,3 +8,10 @@ export interface Chat {
   auto_enabled: boolean;
   conversation_status: 'active' | 'closed';
 }
+
+export interface Photo {
+  filename: string;
+  size_bytes: number;
+  enabled: boolean;
+  url: string;
+}

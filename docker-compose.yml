@@ -10,6 +10,7 @@ services:
     volumes:
       - ./backend/app/templates:/app/app/templates:ro
       - sessions:/app/sessions
+      - ./backend/photos:/app/photos
     restart: unless-stopped
 
   frontend:
