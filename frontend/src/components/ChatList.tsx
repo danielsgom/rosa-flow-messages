@@ -1,14 +1,21 @@
 import React from 'react';
-import { Chat } from '../types';
+import { Chat, Photo } from '../types';
 import { ChatItem } from './ChatItem';
 
 interface ChatListProps {
   chats: Chat[];
+  allPhotos: Photo[];
+  assignedCountMap: Record<number, number>;
   onToggle: (chatId: number, enabled: boolean) => void;
+  onManagePhotos: (chatId: number) => void;
+  onToggleVip: (chatId: number, isVip: boolean) => void;
+  onViewHistory: (chatId: number) => void;
   loading?: boolean;
 }
 
-export const ChatList: React.FC<ChatListProps> = ({ chats, onToggle, loading }) => {
+export const ChatList: React.FC<ChatListProps> = ({
+  chats, allPhotos, assignedCountMap, onToggle, onManagePhotos, onToggleVip, onViewHistory, loading,
+}) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -34,7 +41,16 @@ export const ChatList: React.FC<ChatListProps> = ({ chats, onToggle, loading }) 
   return (
     <div className="flex flex-col gap-3">
       {chats.map((chat) => (
-        <ChatItem key={chat.chat_id} chat={chat} onToggle={onToggle} />
+        <ChatItem
+          key={chat.chat_id}
+          chat={chat}
+          allPhotos={allPhotos}
+          assignedCount={assignedCountMap[chat.chat_id] ?? 0}
+          onToggle={onToggle}
+          onManagePhotos={onManagePhotos}
+          onToggleVip={onToggleVip}
+          onViewHistory={onViewHistory}
+        />
       ))}
     </div>
   );

@@ -23,14 +23,70 @@ logger = get_logger(__name__)
 
 _ASTERISK_RE = re.compile(r'\*[^*\n]+\*')
 _PARENTHETICAL_RE = re.compile(r'\*?\(.{5,}?\)', re.DOTALL)
-_OPEN_PAREN_RE = re.compile(r'\s*\*?\([^)]{5,}$', re.DOTALL)  # unclosed paren at end
+_OPEN_PAREN_RE = re.compile(r'\s*\*?\([^)]{5,}$', re.DOTALL)
+_MARKDOWN_IMAGE_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')  # ![alt](url)
+_MARKDOWN_IMAGE_BARE_RE = re.compile(r'!\[[^\]]{5,}\]')   # ![long description] without url
+
+# Fixed replies for audio messages — no AI needed
+_AUDIO_REPLIES = [
+    "amor, no me mandes audios 🙈 escríbeme mejor",
+    "ayyy no puedo escucharlo ahora mismo, cuéntamelo por aquí 😘",
+    "prefiero que me lo escribas, así lo saboreo más 🥷",
+    "no puedo poner el audio ahora, escríbeme lo que ibas a decir 💛",
+]
+
+# Fixed farewell messages — NO AI, guaranteed goodbye every time
+_FAREWELL_MESSAGES = [
+    "amore se ha acabado el tiempo y me tengo que ir ya 🙏 te dejo algo rico en el canal para que sigas tú solo 🔥 mañana te escribo?",
+    "cariño me llaman y debo salir, qué pena porque estaba muy a gusto contigo 😘 te dejo una fotito en el canal para que no me eches de menos, hasta luego guapo",
+    "jooo bonito mío tengo que irme ya, me espera una cosa y no puedo más 😅 estate pendiente del canal que te dejo algo para ti 🔥 luego hablamos?",
+    "mi rey me piro ya, que tengo el gym esperándome y no puedo faltar más 😅 te dejo algo en el canal para que sigas calentito, besos 💋",
+    "ufff cariño se me acaba el tiempo, tengo que salir corriendo 🙈 ya sabes dónde encontrarme, te dejo algo rico en el canal 😏 mañana seguimos?",
+    "ay mi amor me voy ya, que me llama mi amiga y lleva esperando un rato 😩 pero te dejo una sorpresita en el canal 🔥 cuídate bonito",
+    "cariño me tengo que escapar, que tengo una sesión de fotos ahora y se me hace tarde 📸 te dejo algo del shooting en el canal para ti 😏 hasta luego mi rey",
+]
+
+# Fixed closing replies — short natural goodbye responses, NO AI
+_CLOSING_MESSAGES = [
+    "jajaj ay bonito mío, me voy ya en serio 😘",
+    "cuídate mucho mi rey 💋",
+    "dale, hasta luego guapo 🫶",
+    "jajaja que cabezón eres, venga me voy ya eh 😏",
+    "besitos mi amor, hasta la próxima 😘",
+    "venga que me piro de verdad ahora 🏃‍♀️💨",
+    "mi rey ya me voy, portate bien 😈",
+]
+
+# Fixed farewell messages — NO AI, guaranteed goodbye every time
+_FAREWELL_MESSAGES = [
+    "amore se ha acabado el tiempo y me tengo que ir ya 🙏 te dejo algo rico en el canal para que sigas tú solo 🔥 mañana te escribo?",
+    "cariño me llaman y debo salir, qué pena porque estaba muy a gusto contigo 😘 te dejo una fotito en el canal para que no me eches de menos, hasta luego guapo",
+    "jooo bonito mío tengo que irme ya, me espera una cosa y no puedo más 😅 estate pendiente del canal que te dejo algo para ti 🔥 luego hablamos?",
+    "mi rey me piro ya, que tengo el gym esperándome y no puedo faltar más 😅 te dejo algo en el canal para que sigas calentito, besos 💋",
+    "ufff cariño se me acaba el tiempo, tengo que salir corriendo 🙈 ya sabes dónde encontrarme, te dejo algo rico en el canal 😏 mañana seguimos?",
+    "ay mi amor me voy ya, que me llama mi amiga y lleva esperando un rato 😩 pero te dejo una sorpresita en el canal 🔥 cuídate bonito",
+    "cariño me tengo que escapar, que tengo una sesión de fotos ahora y se me hace tarde 📸 te dejo algo del shooting en el canal para ti 😏 hasta luego mi rey",
+]
+
+# Fixed closing replies — short natural goodbye responses, NO AI
+_CLOSING_MESSAGES = [
+    "jajaj ay bonito mío, me voy ya en serio 😘",
+    "cuídate mucho mi rey 💋",
+    "dale, hasta luego guapo 🫶",
+    "jajaja que cabezón eres, venga me voy ya eh 😏",
+    "besitos mi amor, hasta la próxima 😘",
+    "venga que me piro de verdad ahora 🏃‍♀️💨",
+    "mi rey ya me voy, portate bien 😈",
+]
 
 
 def _sanitize_response(text: str) -> str:
-    """Remove asterisk-wrapped text, parenthetical content (closed and unclosed)."""
+    """Remove asterisk-wrapped text, parentheticals, and markdown image tags."""
     text = _ASTERISK_RE.sub('', text)
     text = _PARENTHETICAL_RE.sub('', text)
-    text = _OPEN_PAREN_RE.sub('', text)  # strip unclosed paren tails
+    text = _OPEN_PAREN_RE.sub('', text)
+    text = _MARKDOWN_IMAGE_RE.sub('', text)
+    text = _MARKDOWN_IMAGE_BARE_RE.sub('', text)
     text = re.sub(r'  +', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
@@ -45,8 +101,10 @@ def _enforce_message_limit(text: str, max_blocks: int = 2) -> str:
 def _calc_max_tokens(user_message: str, context_type: str) -> int:
     if context_type == 'photo_hint':
         return 60
+    if context_type == 'media_reaction':
+        return 80
     if context_type in ('farewell', 'winding_down'):
-        return 150
+        return 200
     length = len(user_message)
     if length < 15:
         return 80
@@ -78,6 +136,8 @@ class TriggerEngine:
         # Debounce state per chat
         self._pending_tasks: Dict[int, asyncio.Task] = {}
         self._pending_messages: Dict[int, List[str]] = {}
+        self._pending_media_type: Dict[int, str] = {}  # tracks media type through debounce
+        self._pending_farewell: set = set()  # chats where user said goodbye
         self._lock = asyncio.Lock()
 
     async def process_message(
@@ -90,9 +150,11 @@ class TriggerEngine:
         full_name: Optional[str] = None,
         username: Optional[str] = None,
         date: Optional[datetime] = None,
+        media_type: str = "",
     ) -> TriggerResult:
         """
         Process an incoming message with debounce and session lifecycle.
+        media_type: 'audio', 'image', 'video', or '' for plain text.
         """
         # 1. Register the chat
         chat = await self.chat_registry.register_or_update(
@@ -109,15 +171,23 @@ class TriggerEngine:
             logger.debug(f"Ignoring outbound message from chat {chat_id}")
             return TriggerResult(should_respond=False, reason="outbound_message")
 
-        # 3. Detect farewell → close conversation
+        # 3. Handle audio immediately — fixed reply, no AI, no debounce
+        if media_type == "audio":
+            reply = random.choice(_AUDIO_REPLIES)
+            try:
+                await self.sender.send_message(chat_id, reply)
+                self.context_manager.add_to_history(chat_id, "user", "[audio]")
+                self.context_manager.add_to_history(chat_id, "assistant", reply)
+                logger.info(f"🎧 Audio message from chat {chat_id} — sent fixed reply")
+            except Exception as exc:
+                logger.error(f"Failed to send audio reply to chat {chat_id}: {exc}")
+            return TriggerResult(should_respond=True, reason="audio_fixed_reply")
+
+        # 4. Detect farewell → mark for farewell response (don't close yet — AI must say goodbye first)
         if is_farewell(text):
-            logger.info(f"Farewell detected in chat {chat_id}. Closing conversation.")
-            await self.chat_registry.set_conversation_status(
-                chat_id, ConversationStatus.CLOSED
-            )
-            self.context_manager.clear_history(chat_id)
-            await self.chat_registry.reset_conversation(chat_id)
-            return TriggerResult(should_respond=False, reason="farewell_detected")
+            logger.info(f"Farewell detected in chat {chat_id}. Will generate goodbye before closing.")
+            async with self._lock:
+                self._pending_farewell.add(chat_id)
 
         # 4. Session lifecycle: closed or new session
         status = await self.chat_registry.get_conversation_status(chat_id)
@@ -158,10 +228,17 @@ class TriggerEngine:
                     pass
                 logger.debug(f"Debounce timer reset for chat {chat_id}")
 
+            # Track media type (latest media wins; plain text clears it)
+            if media_type in ("image", "video"):
+                self._pending_media_type[chat_id] = media_type
+            elif not media_type:
+                self._pending_media_type.pop(chat_id, None)
+
             # Add message to pending buffer
             if chat_id not in self._pending_messages:
                 self._pending_messages[chat_id] = []
-            self._pending_messages[chat_id].append(text)
+            display_text = text if text else f"[{media_type}]"
+            self._pending_messages[chat_id].append(display_text)
 
             # Calculate delay
             delay = calculate_delay(
@@ -190,7 +267,8 @@ class TriggerEngine:
 
     def _check_photo(
         self, turn_count: int, photos_sent: int, last_photo_turn: int,
-        sent_filenames: list, force_explicit: bool = False, heat_hot: bool = False
+        sent_filenames: list, assigned_filenames: list,
+        force_explicit: bool = False, heat_hot: bool = False
     ) -> Tuple[bool, Optional[Path], bool]:
         """
         Decide whether to send a photo this turn.
@@ -217,7 +295,9 @@ class TriggerEngine:
             if not heat_hot and random.random() >= self.settings.photo_send_probability:
                 return False, None, False
 
-        photo_path = self.photo_registry.get_random_enabled_photo(exclude=sent_filenames)
+        photo_path = self.photo_registry.get_random_enabled_photo(
+            exclude=sent_filenames, allowed=assigned_filenames or None
+        )
         if photo_path is None:
             return False, None, False
 
@@ -234,10 +314,15 @@ class TriggerEngine:
                     return
                 self._pending_messages.pop(chat_id, None)
                 self._pending_tasks.pop(chat_id, None)
+                pending_media = self._pending_media_type.pop(chat_id, None)
+                is_farewell_pending = chat_id in self._pending_farewell
+                if is_farewell_pending:
+                    self._pending_farewell.discard(chat_id)
 
             logger.info(
                 f"⏰ Debounce expired for chat {chat_id}. "
                 f"Processing {len(messages)} accumulated message(s)."
+                + (f" [media={pending_media}]" if pending_media else "")
             )
 
             for msg in messages:
@@ -251,29 +336,21 @@ class TriggerEngine:
             photos_sent = chat.photos_sent if chat else 0
             last_photo_turn = chat.last_photo_turn if chat else 0
             sent_filenames = list(chat.photos_sent_filenames) if chat else []
+            assigned_filenames = list(chat.assigned_photo_filenames) if chat else []
             status = chat.conversation_status if chat else None
+            chat_name = chat.name if chat else str(chat_id)
 
-            # --- CLOSING state: allow a few more natural replies then close ---
+            # Set cost tracking context (including active conversation id for DB)
+            conv_id = await self.chat_registry.get_active_conversation_id(chat_id)
+            self.generator.set_chat_context(chat_id, chat_name, conversation_id=conv_id)
+
+            # --- CLOSING state: fixed template — no AI, no history, guaranteed goodbye ---
             if status and status == ConversationStatus.CLOSING:
-                context_messages = self.context_manager.build_context(
-                    chat_id, last_message, turn_count
-                )
+                closing_text = random.choice(_CLOSING_MESSAGES)
                 try:
-                    response_text = await self.generator.generate(
-                        context_messages, max_tokens=_calc_max_tokens(last_message, "closing")
-                    )
-                except Exception as exc:
-                    logger.error(f"Failed to generate closing response: {exc}")
-                    return
-
-                response_text = _enforce_message_limit(_sanitize_response(response_text))
-                if not response_text:
-                    return
-
-                try:
-                    await self.sender.send_message(chat_id, response_text)
+                    await self.sender.send_message(chat_id, closing_text)
                     self.rules.record_bot_message(chat_id)
-                    self.context_manager.add_to_history(chat_id, "assistant", response_text)
+                    self.context_manager.add_to_history(chat_id, "assistant", closing_text)
 
                     remaining = await self.chat_registry.decrement_closing(chat_id)
                     if remaining <= 0:
@@ -290,7 +367,25 @@ class TriggerEngine:
                 return
 
             # --- Normal / phase-based flow ---
-            phase = await self.chat_registry.get_conversation_phase(chat_id)
+            # Farewell keyword overrides phase — Rosa must say goodbye first
+            if is_farewell_pending:
+                phase = "farewell"
+            else:
+                phase = await self.chat_registry.get_conversation_phase(chat_id)
+
+            # --- FAREWELL: fixed template — no LLM, no history, always fires ---
+            if phase == "farewell":
+                farewell_text = random.choice(_FAREWELL_MESSAGES)
+                try:
+                    await self.sender.send_message(chat_id, farewell_text)
+                    self.rules.record_bot_message(chat_id)
+                    self.context_manager.add_to_history(chat_id, "assistant", farewell_text)
+                    await self.chat_registry.enter_closing(chat_id, turns=2)
+                    logger.info(f"👋 Farewell sent to chat {chat_id}. Entering CLOSING (2 turns left).")
+                except Exception as exc:
+                    logger.error(f"Failed to send farewell to chat {chat_id}: {exc}")
+                return
+
             photo_forced = is_photo_request(last_message)
 
             # Also trigger photo when sexting heat is very high (but gap still applies)
@@ -301,20 +396,20 @@ class TriggerEngine:
                     heat_hot = True
 
             will_send_photo, photo_path, photo_limit_reached = self._check_photo(
-                turn_count, photos_sent, last_photo_turn, sent_filenames,
+                turn_count, photos_sent, last_photo_turn, sent_filenames, assigned_filenames,
                 force_explicit=photo_forced, heat_hot=heat_hot
             )
 
-            # Choose context type
-            if phase == "farewell":
-                context_type = "farewell"
-                context_messages = self.context_manager.build_farewell_context(
-                    chat_id, last_message, turn_count
-                )
-            elif phase == "winding_down":
+            # Choose context type  — farewell handled above, never reaches here
+            if phase == "winding_down":
                 context_type = "winding_down"
-                context_messages = self.context_manager.build_context_winding_down(
-                    chat_id, last_message, turn_count
+                context_messages = self.context_manager.build_context_winding_down_minimal(
+                    last_message
+                )
+            elif pending_media in ("image", "video"):
+                context_type = "media_reaction"
+                context_messages = self.context_manager.build_context_media_reaction(
+                    chat_id, pending_media, turn_count
                 )
             elif will_send_photo:
                 context_type = "photo_hint"
@@ -365,7 +460,7 @@ class TriggerEngine:
                         logger.error(f"Failed to send photo to chat {chat_id}: {exc}")
 
                 if phase == "farewell":
-                    logger.info(f"Farewell sent to chat {chat_id}. Entering CLOSING state.")
+                    logger.info(f"Farewell sent to chat {chat_id}. Entering CLOSING (2 turns left).")
                     await self.chat_registry.enter_closing(chat_id, turns=2)
                 else:
                     await self.chat_registry.increment_turn(chat_id)

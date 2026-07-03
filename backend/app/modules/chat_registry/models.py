@@ -28,5 +28,7 @@ class ChatInfo(BaseModel):
     session_max_turns: Optional[int] = None  # randomized per session (15-20)
     photos_sent: int = 0
     photos_sent_filenames: List[str] = Field(default_factory=list)
+    assigned_photo_filenames: List[str] = Field(default_factory=list)
     closing_turns_left: int = 0
     last_photo_turn: int = 0
+    is_vip: bool = False

@@ -1,8 +1,11 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 
 from app.modules.logger import get_logger
 from .client import OpenRouterClient
 from .models import CompletionRequest
+
+if TYPE_CHECKING:
+    from app.modules.cost_tracker import CostTracker
 
 logger = get_logger(__name__)
 
@@ -10,10 +13,27 @@ logger = get_logger(__name__)
 class ResponseGenerator:
     """Generates AI responses using the OpenRouter client."""
 
-    def __init__(self, client: OpenRouterClient, model: str, max_tokens: int = 8000):
+    def __init__(self, client: OpenRouterClient, model: str, max_tokens: int = 8000,
+                 cost_tracker: Optional["CostTracker"] = None):
         self.client = client
         self.model = model
         self.max_tokens = max_tokens
+        self.cost_tracker = cost_tracker
+        # Context for cost attribution (set before each generate call)
+        self._current_chat_id: int = 0
+        self._current_chat_name: str = "unknown"
+        self._current_conv_id: Optional[int] = None
+
+    def set_chat_context(
+        self,
+        chat_id: int,
+        chat_name: str,
+        conversation_id: Optional[int] = None,
+    ) -> None:
+        """Set the chat context for the next generate call."""
+        self._current_chat_id = chat_id
+        self._current_chat_name = chat_name
+        self._current_conv_id = conversation_id
 
     async def generate(
         self,
@@ -56,6 +76,23 @@ class ResponseGenerator:
         content = choices[0].get("message", {}).get("content")
         if not content:
             raise ValueError(f"OpenRouter response missing content: {choices[0]}")
+
+        # Record cost if tracker is available
+        if self.cost_tracker is not None:
+            usage = response.get("usage", {})
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            if prompt_tokens or completion_tokens:
+                import asyncio
+                asyncio.create_task(
+                    self.cost_tracker.record(
+                        chat_id=self._current_chat_id,
+                        chat_name=self._current_chat_name,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        conversation_id=self._current_conv_id,
+                    )
+                )
 
         logger.debug(f"Generated response: {content[:50]}...")
         return content

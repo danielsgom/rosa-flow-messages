@@ -40,11 +40,31 @@ class MessageEventHandler:
             logger.error(f"Error handling message event: {exc}", exc_info=True)
             raise
 
+    @staticmethod
+    def _detect_media_type(message) -> str:
+        """
+        Return 'audio', 'image', 'video', or '' based on message media.
+        Voice notes and audio files → 'audio'.
+        Photos and stickers        → 'image'.
+        Videos, GIFs, video notes  → 'video'.
+        """
+        if message.voice or message.audio:
+            return "audio"
+        if message.photo or message.sticker:
+            return "image"
+        if message.video or message.gif or message.video_note:
+            return "video"
+        return ""
+
     async def _process_message_event(self, event):
         """Internal message processing logic."""
         message = event.message
 
-        if not message.text:
+        media_type = self._detect_media_type(message)
+        text = message.text or ""
+
+        # Ignore messages with no text AND no recognised media
+        if not text and not media_type:
             return
 
         # Get sender info (User entity)
@@ -70,13 +90,14 @@ class MessageEventHandler:
             if not name:
                 name = first or str(chat_id)
 
+        preview = text[:50] if text else f"[{media_type}]"
         logger.info(
-            f"Message from {full_name or name} (@{username or 'N/A'}) [chat {chat_id}]: {message.text[:50]}")
+            f"Message from {full_name or name} (@{username or 'N/A'}) [chat {chat_id}]: {preview}")
 
         tg_message = TelegramMessage(
             chat_id=chat_id,
             sender_id=sender_id,
-            text=message.text,
+            text=text,
             date=message.date,
             is_outgoing=False,
         )
@@ -85,10 +106,11 @@ class MessageEventHandler:
         await self.trigger_engine.process_message(
             chat_id=chat_id,
             sender_id=sender_id,
-            text=message.text,
+            text=text,
             my_id=self._my_id,
             name=name,
             full_name=full_name,
             username=username,
             date=message.date,
+            media_type=media_type,
         )

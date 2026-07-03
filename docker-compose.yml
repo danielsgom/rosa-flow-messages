@@ -11,6 +11,7 @@ services:
       - ./backend/app/templates:/app/app/templates:ro
       - sessions:/app/sessions
       - ./backend/photos:/app/photos
+      - ./backend/data:/app/data
     restart: unless-stopped
 
   frontend:

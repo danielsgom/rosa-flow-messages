@@ -1,4 +1,5 @@
 from telethon import TelegramClient
+from telethon.tl.types import Channel
 from telethon.sessions import StringSession
 from pathlib import Path
 from typing import Optional
@@ -83,6 +84,11 @@ class TelegramClientWrapper:
         dialogs = []
         async for dialog in self.client.iter_dialogs():
             entity = dialog.entity
+
+            # Skip broadcast channels (Channel with broadcast=True).
+            # Supergroups are also Channel but have megagroup=True — keep those.
+            if isinstance(entity, Channel) and getattr(entity, 'broadcast', False):
+                continue
 
             # Get name info
             name = getattr(entity, 'first_name', '') or getattr(entity, 'title', '') or str(entity.id)

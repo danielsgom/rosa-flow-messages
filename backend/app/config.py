@@ -2,6 +2,9 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 from pathlib import Path
 
+# Absolute path to backend/data/rosa.db, independent of working directory
+_BACKEND_DIR = Path(__file__).parent.parent  # backend/app/../ = backend/
+_DEFAULT_DB_URL = f"sqlite+aiosqlite:///{_BACKEND_DIR / 'data' / 'rosa.db'}"
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -40,6 +43,9 @@ class Settings(BaseSettings):
 
     # Conversation naturalness
     conversation_heat_detection: bool = True
+
+    # Database
+    database_url: str = _DEFAULT_DB_URL
 
     # Logging
     log_level: str = "INFO"

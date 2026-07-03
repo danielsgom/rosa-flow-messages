@@ -41,29 +41,38 @@ class PhotoRegistry:
             ))
         return result
 
-    def get_random_enabled_photo(self, exclude: Optional[List[str]] = None) -> Optional[Path]:
-        """Return a random enabled photo path not in the exclude list, or None if none available."""
+    def get_random_enabled_photo(
+        self,
+        exclude: Optional[List[str]] = None,
+        allowed: Optional[List[str]] = None,
+    ) -> Optional[Path]:
+        """
+        Return a random enabled photo path.
+        allowed: if non-empty, only consider photos in this list (chat assignment).
+        exclude: skip already-sent filenames this session.
+        Falls back to any enabled photo if the filtered pool is empty.
+        """
         exclude_set = set(exclude or [])
-        enabled = [
-            self.photos_dir / name
-            for name, meta in self._meta.items()
-            if meta.get("enabled", True)
-            and (self.photos_dir / name).exists()
-            and Path(name).suffix.lower() in _ALLOWED_EXTENSIONS
-            and name not in exclude_set
-        ]
-        # If all enabled photos have been sent, fall back to any enabled photo
-        if not enabled:
-            enabled = [
+        allowed_set = set(allowed) if allowed else None
+
+        def _pool(strict: bool) -> List[Path]:
+            return [
                 self.photos_dir / name
                 for name, meta in self._meta.items()
                 if meta.get("enabled", True)
                 and (self.photos_dir / name).exists()
                 and Path(name).suffix.lower() in _ALLOWED_EXTENSIONS
+                and (not strict or name not in exclude_set)
+                and (allowed_set is None or name in allowed_set)
             ]
-        if not enabled:
+
+        candidates = _pool(strict=True)
+        if not candidates:
+            # All assigned+enabled photos already sent → reset exclude constraint
+            candidates = _pool(strict=False)
+        if not candidates:
             return None
-        return random.choice(enabled)
+        return random.choice(candidates)
 
     def save_photo(self, filename: str, data: bytes) -> PhotoMeta:
         """Save a photo to disk and register it as enabled."""

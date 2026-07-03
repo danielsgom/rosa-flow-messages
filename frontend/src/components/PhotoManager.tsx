@@ -3,7 +3,7 @@ import { deletePhoto, getPhotos, togglePhoto, uploadPhoto } from '../services/ap
 import { Photo } from '../types';
 import { ToggleSwitch } from './ToggleSwitch';
 
-export const PhotoManager: React.FC = () => {
+export const PhotoManager: React.FC<{ onPhotosChange?: (photos: Photo[]) => void }> = ({ onPhotosChange }) => {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -15,6 +15,7 @@ export const PhotoManager: React.FC = () => {
     try {
       const data = await getPhotos();
       setPhotos(data.photos);
+      onPhotosChange?.(data.photos);
       setError(null);
     } catch (e) {
       setError('No se pudieron cargar las fotos');

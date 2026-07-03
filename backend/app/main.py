@@ -15,7 +15,13 @@ from app.modules.openai_client import OpenRouterClient, ResponseGenerator
 from app.modules.photo_registry import PhotoRegistry
 from app.modules.telegram import TelegramClientWrapper, MessageEventHandler, TelegramSender
 from app.modules.trigger import TriggerEngine
-from app.api.routes import ChatRegistryDep, TelegramClientDep, PhotoRegistryDep, router as api_router
+from app.modules.cost_tracker import CostTracker
+from app.modules.database import init_db, close_db, UserRepository, ConversationRepository, CostRepository
+from app.api.routes import (
+    ChatRegistryDep, TelegramClientDep, PhotoRegistryDep, CostTrackerDep,
+    ConvRepoDep, CostRepoDep,
+    router as api_router,
+)
 from app.logger_config import setup_logging
 
 logger = get_logger(__name__)
@@ -37,8 +43,33 @@ async def lifespan(app: FastAPI):
     # Setup logging
     setup_logging(settings.log_level)
 
-    # Initialize Chat Registry
-    chat_registry = ChatRegistry()
+    # Initialize Database
+    session_factory = await init_db(settings.database_url)
+    user_repo = UserRepository(session_factory)
+    conv_repo = ConversationRepository(session_factory)
+    cost_repo = CostRepository(session_factory)
+    ConvRepoDep.repo = conv_repo
+    CostRepoDep.repo = cost_repo
+    logger.info(f"💾 Database initialized: {settings.database_url}")
+
+    # Initialize Chat Registry (with DB repos)
+    chat_registry = ChatRegistry(user_repo=user_repo, conv_repo=conv_repo)
+    await chat_registry.load_from_db()
+
+    # Direct sqlite3 verification — bypasses SQLAlchemy to confirm actual DB state
+    import sqlite3 as _sqlite3
+    db_path = Path(settings.database_url.split("///")[-1])
+    logger.info(f"💾 DB path: {db_path.resolve()} (exists: {db_path.exists()})")
+    if db_path.exists():
+        try:
+            with _sqlite3.connect(str(db_path.resolve())) as _conn:
+                _users = _conn.execute("SELECT chat_id, name, is_vip FROM users").fetchall()
+                logger.info(f"💾 sqlite3 direct read: {len(_users)} users in DB → {_users[:5]}")
+        except Exception as _e:
+            logger.error(f"💾 sqlite3 direct read FAILED: {_e}")
+    else:
+        logger.warning(f"💾 DB file does NOT exist at {db_path.resolve()}")
+
     ChatRegistryDep.registry = chat_registry
 
     # Initialize Context Manager
@@ -58,7 +89,12 @@ async def lifespan(app: FastAPI):
 
     # Initialize OpenRouter
     openrouter_client = OpenRouterClient(settings.openrouter_api_key)
-    generator = ResponseGenerator(openrouter_client, settings.openrouter_model, settings.openrouter_max_tokens)
+    cost_tracker = CostTracker(cost_repo=cost_repo)
+    CostTrackerDep.tracker = cost_tracker
+    generator = ResponseGenerator(
+        openrouter_client, settings.openrouter_model, settings.openrouter_max_tokens,
+        cost_tracker=cost_tracker,
+    )
 
     # Initialize Telegram
     telegram_wrapper = TelegramClientWrapper(
@@ -100,6 +136,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     if telegram_wrapper:
         await telegram_wrapper.disconnect()
+    await close_db()
 
 
 def create_app() -> FastAPI:

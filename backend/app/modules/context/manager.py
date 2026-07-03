@@ -152,26 +152,109 @@ class ContextManager:
     def build_farewell_context(
         self, chat_id: int, new_message: Optional[str] = None, turn_count: int = 0
     ) -> List[dict]:
-        messages = self.build_context(chat_id, new_message, turn_count)
+        """
+        Build farewell context with the goodbye hint injected BEFORE the user
+        message so the model sees it as the last system instruction before responding.
+        Heat detection is deliberately skipped to avoid "be atrevida" overriding goodbye.
+        """
+        messages: List[dict] = [{"role": "system", "content": self._system_prompt}]
+
+        if turn_count < 3 and self._examples_content:
+            messages.append({"role": "system", "content": self._examples_content})
+
+        if turn_count == 0 or turn_count % 5 == 0 or _is_night_madrid():
+            messages.append({"role": "system", "content": _current_madrid_time_hint()})
+
+        limit = _history_window(turn_count)
+        messages.extend(self.history.get_for_openai(chat_id, limit=limit))
+
+        # Farewell hint comes RIGHT before the user message — model sees it last
         messages.append({"role": "system", "content": (
-            "INSTRUCCIÓN OBLIGATORIA: Este mensaje ES TU DESPEDIDA. "
-            "DEBES despedirte en este mensaje sin falta. No puedes seguir la conversación. "
-            "Usa una de tus excusas habituales (gym, amigas, sesión de fotos, batería, contenido VIP...). "
-            "Dile que ha sido genial, dale un piropo final y pregúntale si habláis mañana o luego. "
-            "Sé cariñosa y natural, como Rosa de verdad. "
-            "PROHIBIDO continuar el tema de la conversación. SOLO despedida."
+            "INSTRUCCIÓN OBLIGATORIA — DESPEDIDA NATURAL: Ha llegado el momento de despedirte. "
+            "Escribe una despedida cariñosa y orgánica, como Rosa de siempre. "
+            "Usa una excusa creible y natural: gym, salir con amigas, sesión de fotos, llamada, cansancio... "
+            "Menciona que le dejas una foto o algo rico en el canal para que siga dándose un buen rato solo. "
+            "Ejemplo real: 'amore se ha acabado el tiempo, me llaman y debo salir 🙏 te dejo algo rico en el canal para que sigas tú solo 🔥 hablamos mañana?' "
+            "Otro ejemplo: 'cariño tengo que irme ya, vienen mis amigas 🙊 pero te dejo una fotito en el canal para que no me eches tanto de menos 😘 escribeme luego?' "
+            "PROHIBIDO: continuar sexting, hacer preguntas que no sean de despedida, decir frases de servicio al cliente."
         )})
+
+        if new_message:
+            messages.append({"role": "user", "content": new_message})
+
         return messages
 
     def build_context_winding_down(
         self, chat_id: int, new_message: Optional[str] = None, turn_count: int = 0
     ) -> List[dict]:
-        messages = self.build_context(chat_id, new_message, turn_count)
+        """
+        Build winding-down context. Hint injected before user message.
+        Heat detection skipped to avoid overriding the cooldown.
+        """
+        messages: List[dict] = [{"role": "system", "content": self._system_prompt}]
+
+        if turn_count < 3 and self._examples_content:
+            messages.append({"role": "system", "content": self._examples_content})
+
+        if turn_count == 0 or turn_count % 5 == 0 or _is_night_madrid():
+            messages.append({"role": "system", "content": _current_madrid_time_hint()})
+
+        limit = _history_window(turn_count)
+        messages.extend(self.history.get_for_openai(chat_id, limit=limit))
+
         messages.append({"role": "system", "content": (
-            "Llevas un rato hablando. Ve bajando la intensidad sutilmente. "
-            "Puedes hacer un comentario de que tienes cosas pendientes pero SIN decir adiós todavía. "
-            "Un solo mensaje corto, natural."
+            "Llevas un rato hablando. Empieza a insinuar suavemente que pronto tendrás que irte. "
+            "No te despidas todavía — solo pon alguna referencia natural a que tienes cosas: "
+            "'uf es que en un rato tengo que salir', 'me quedo un ratito más y luego me piro', etc. "
+            "Sigue coqueta e interesada, solo baja ligeramente la intensidad del sexting."
         )})
+
+        if new_message:
+            messages.append({"role": "user", "content": new_message})
+
+        return messages
+
+    def build_context_winding_down_minimal(self, last_message: str) -> List[dict]:
+        """
+        Minimal winding-down context — NO conversation history, NO full system prompt.
+        Only a brief instruction and the user's last message. Forces the model to hint
+        at leaving without being derailed by heavy sexting history.
+        """
+        return [
+            {"role": "system", "content": (
+                "Eres Rosa, una chica española coqueta y natural que habla por WhatsApp. "
+                "Responde al mensaje del usuario de forma breve y cariñosa (máximo 2 frases). "
+                "OBLIGATORIO: menciona sutilmente que pronto tendrás que irte, de forma natural, "
+                "por ejemplo: 'uf es que en un rato tengo que salir', "
+                "'me quedo un ratito más y luego me piro', 'ay que tengo una cosita ahora'. "
+                "No te despidas todavía. Sé coqueta pero baja la intensidad."
+            )},
+            {"role": "user", "content": last_message},
+        ]
+
+    def build_context_closing(
+        self, chat_id: int, new_message: Optional[str] = None, turn_count: int = 0
+    ) -> List[dict]:
+        """
+        Used during the 2-turn CLOSING window after Rosa has already said goodbye.
+        She responds naturally to his farewell but keeps it short — she's leaving.
+        Heat detection skipped entirely.
+        """
+        messages: List[dict] = [{"role": "system", "content": self._system_prompt}]
+
+        limit = _history_window(turn_count)
+        messages.extend(self.history.get_for_openai(chat_id, limit=limit))
+
+        messages.append({"role": "system", "content": (
+            "Ya te estás despidiendo. Responde a su mensaje de forma muy breve y cariñosa, "
+            "como quien ya tiene un pie fuera: 'jajaj ay bonito mío, venga me voy ya eh 😘', "
+            "'cuídate mucho mi rey, ya sabes dónde encontrarme 💋', 'dale, hasta luego guapo 🫶'. "
+            "UN SOLO mensaje muy corto. Nada de sexting ni preguntas. Solo despedida final."
+        )})
+
+        if new_message:
+            messages.append({"role": "user", "content": new_message})
+
         return messages
 
     def build_context_with_photo_hint(
@@ -191,11 +274,47 @@ class ContextManager:
     ) -> List[dict]:
         messages = self.build_context(chat_id, new_message, turn_count)
         messages.append({"role": "system", "content": (
-            "Ya has mandado todas las fotos que podías en esta conversación. "
-            "Si te piden más fotos, diles de forma natural que ya les has mandado "
-            "bastante por hoy y que si quieren más estén pendientes del canal, "
-            "que les van a gustar. Sin mencionar packs ni secciones."
+            "Has llegado al límite de fotos que puedes mandar en esta conversación. "
+            "PROHIBIDO ofrecer mostrar partes de tu cuerpo ('quieres ver mis tetas', 'te mando algo', etc). "
+            "PROHIBIDO describir ningún tipo de imagen ni contenido visual. "
+            "Si te piden más fotos: diles con naturalidad que ya les has mandado bastante por hoy "
+            "y que si quieren más estén pendientes del canal. Sin mencionar packs ni secciones. "
+            "Si no piden fotos: continúa la conversación normalmente sin mencionar fotos."
         )})
+        return messages
+
+    def build_context_media_reaction(
+        self, chat_id: int, media_type: str, turn_count: int = 0
+    ) -> List[dict]:
+        """
+        Build context for reacting to a photo or video the user sent.
+        The AI should respond with excited, sensual reactions without
+        acknowledging it cannot actually see the media.
+        """
+        messages: List[dict] = [{"role": "system", "content": self._system_prompt}]
+
+        if turn_count < 3 and self._examples_content:
+            messages.append({"role": "system", "content": self._examples_content})
+
+        if turn_count == 0 or turn_count % 5 == 0 or _is_night_madrid():
+            messages.append({"role": "system", "content": _current_madrid_time_hint()})
+
+        limit = _history_window(turn_count)
+        messages.extend(self.history.get_for_openai(chat_id, limit=limit))
+
+        tipo = "una foto" if media_type == "image" else "un v\u00eddeo"
+        messages.append({"role": "system", "content": (
+            f"INSTRUCCI\u00d3N OBLIGATORIA: El usuario acaba de mandarte {tipo}. "
+            "Reacciona con ansia y excitaci\u00f3n aut\u00e9ntica, como si lo estuvieras viendo ahora mismo. "
+            "UN \u00danico mensaje muy corto (1-2 frases m\u00e1ximo). Natural, caliente, sin rodeos. "
+            "Ejemplos v\u00e1lidos: 'jooooder\u2026 pero qu\u00e9 bueno est\u00e1s 🔥', "
+            "'mmmmm rico rico 😍', 'dios m\u00edo, me has dejado sin palabras\u2026 🥵'. "
+            "PROHIBIDO decir que no puedes ver im\u00e1genes ni que eres una IA. "
+            "Reacciona como si lo vieras de verdad."
+        )})
+
+        messages.append({"role": "user", "content": f"[Te env\u00edo {tipo}]"})
+
         return messages
 
     def add_to_history(self, chat_id: int, role: str, content: str) -> None:
