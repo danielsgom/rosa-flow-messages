@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Chat, Photo } from '../types';
 import { ToggleSwitch } from './ToggleSwitch';
 
@@ -45,6 +45,17 @@ export const ChatTableRow: React.FC<ChatTableRowProps> = ({
   onViewHistory,
 }) => {
   const isActive = chat.conversation_status === 'active';
+  const [showPhotoWarning, setShowPhotoWarning] = useState(false);
+
+  const handleToggleAI = () => {
+    if (!chat.auto_enabled && assignedCount === 0) {
+      setShowPhotoWarning(true);
+      setTimeout(() => setShowPhotoWarning(false), 3000);
+      onManagePhotos(chat.chat_id);
+      return;
+    }
+    onToggle(chat.chat_id, !chat.auto_enabled);
+  };
 
   return (
     <tr className="hover:bg-rosa-50/30 transition-colors group border-b border-gray-50 last:border-0">
@@ -93,8 +104,13 @@ export const ChatTableRow: React.FC<ChatTableRowProps> = ({
           <ToggleSwitch
             size="sm"
             enabled={chat.auto_enabled}
-            onChange={() => onToggle(chat.chat_id, !chat.auto_enabled)}
+            onChange={handleToggleAI}
           />
+          {showPhotoWarning && (
+            <span className="text-[10px] text-amber-600 font-medium animate-pulse whitespace-nowrap">
+              Asigna fotos primero
+            </span>
+          )}
         </div>
       </td>
 

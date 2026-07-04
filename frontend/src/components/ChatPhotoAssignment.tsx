@@ -92,24 +92,31 @@ export const ChatPhotoAssignment: React.FC<Props> = ({ chatId, chatName, allPhot
                   <button
                     key={photo.filename}
                     onClick={() => toggle(photo.filename)}
-                    className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
+                    className={`relative rounded-xl overflow-hidden border-2 transition-all flex flex-col ${
                       isSelected
                         ? 'border-rosa-500 ring-2 ring-rosa-200'
                         : 'border-transparent hover:border-gray-300'
                     }`}
                   >
-                    <img
-                      src={photo.url}
-                      alt={photo.filename}
-                      className="w-full h-full object-cover"
-                    />
-                    {isSelected && (
-                      <div className="absolute inset-0 bg-rosa-500/20 flex items-center justify-center">
-                        <div className="w-6 h-6 rounded-full bg-rosa-500 flex items-center justify-center shadow">
-                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                          </svg>
+                    <div className="aspect-square w-full relative">
+                      <img
+                        src={photo.url}
+                        alt={photo.filename}
+                        className="w-full h-full object-cover"
+                      />
+                      {isSelected && (
+                        <div className="absolute inset-0 bg-rosa-500/20 flex items-center justify-center">
+                          <div className="w-6 h-6 rounded-full bg-rosa-500 flex items-center justify-center shadow">
+                            <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
                         </div>
+                      )}
+                    </div>
+                    {photo.caption && (
+                      <div className="bg-white px-1.5 py-1 text-left">
+                        <p className="text-[9px] text-gray-500 leading-tight line-clamp-2">{photo.caption}</p>
                       </div>
                     )}
                   </button>

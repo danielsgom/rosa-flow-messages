@@ -15,7 +15,7 @@ from app.modules.database.repositories import ConversationRepository, CostReposi
 from app.api.schemas import (
     ChatResponse, ToggleRequest, ToggleResponse, SyncResponse,
     VipRequest,
-    PhotoResponse, PhotoListResponse, PhotoToggleRequest,
+    PhotoResponse, PhotoListResponse, PhotoToggleRequest, PhotoCaptionRequest,
     ChatPhotosResponse, ChatPhotosUpdate,
     ConversationHistoryItem, ChatHistoryResponse,
     CostEntryResponse, CostSummaryResponse, ChatCostResponse,
@@ -261,6 +261,21 @@ async def toggle_photo(
     if not _SAFE_FILENAME_RE.match(filename):
         raise HTTPException(status_code=400, detail="Invalid filename")
     photo = registry.set_enabled(filename, request.enabled)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return PhotoResponse(**photo.model_dump())
+
+
+@router.patch("/photos/{filename}/caption", response_model=PhotoResponse)
+async def update_photo_caption(
+    filename: str,
+    request: PhotoCaptionRequest,
+    registry: PhotoRegistry = Depends(get_photo_registry),
+):
+    """Set or clear the caption for a photo."""
+    if not _SAFE_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    photo = registry.set_caption(filename, request.caption)
     if photo is None:
         raise HTTPException(status_code=404, detail="Photo not found")
     return PhotoResponse(**photo.model_dump())

@@ -135,7 +135,14 @@ class ContextManager:
             if heat == "hot":
                 messages.append({
                     "role": "system",
-                    "content": "Estás en sexting intenso. Sé muy directa y atrevida. Sin rodeos.",
+                    "content": (
+                        "Estás en sexting intenso. Sé muy directa y atrevida, sin rodeos. "
+                        "LIDERA tú: propón una escena o fantasía CONCRETA y hazla avanzar paso a paso "
+                        "(un escenario, un roleplay, una postura, un sitio nuevo, un juego). "
+                        "NO te limites a preguntar 'qué harías tú' ni a repetir 'cuéntame más' o 'me encanta'. "
+                        "Aporta detalles nuevos y sube la temperatura en cada mensaje. "
+                        "PROHIBIDO repetir una idea o pregunta que ya hayas usado antes en esta conversación."
+                    ),
                 })
             elif heat == "emotional":
                 messages.append({
@@ -227,7 +234,9 @@ class ContextManager:
                 "OBLIGATORIO: menciona sutilmente que pronto tendrás que irte, de forma natural, "
                 "por ejemplo: 'uf es que en un rato tengo que salir', "
                 "'me quedo un ratito más y luego me piro', 'ay que tengo una cosita ahora'. "
-                "No te despidas todavía. Sé coqueta pero baja la intensidad."
+                "No te despidas todavía. Sé coqueta pero baja la intensidad. "
+                "PROHIBIDO prometer o insinuar que mandarás una foto ('te mando una foto luego', "
+                "'te la paso después'): NUNCA prometas fotos. Si te piden una, no prometas nada."
             )},
             {"role": "user", "content": last_message},
         ]
@@ -255,18 +264,6 @@ class ContextManager:
         if new_message:
             messages.append({"role": "user", "content": new_message})
 
-        return messages
-
-    def build_context_with_photo_hint(
-        self, chat_id: int, new_message: Optional[str] = None, turn_count: int = 0
-    ) -> List[dict]:
-        messages = self.build_context(chat_id, new_message, turn_count)
-        messages.append({"role": "system", "content": (
-            "INSTRUCCIÓN OBLIGATORIA: Acabas de decidir mandar una foto. "
-            "Escribe SOLO una frase muy corta y sugerente (máx 10 palabras). Nada más. "
-            "No continúes la conversación. "
-            "Ejemplo: 'mira lo que te mando 😏' o 'toma, para que no te olvides de mí 🔥'."
-        )})
         return messages
 
     def build_context_with_photo_limit_hint(

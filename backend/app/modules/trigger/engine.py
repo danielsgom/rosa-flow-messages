@@ -79,6 +79,23 @@ _CLOSING_MESSAGES = [
     "mi rey ya me voy, portate bien 😈",
 ]
 
+# Fixed teaser messages that accompany a photo Rosa is sending RIGHT NOW.
+# Generated WITHOUT the LLM so Rosa can never contradict herself with excuses
+# ("ya te he mandado bastante") or VIP/canal mentions while actually sending one.
+# No body-part descriptions, no promises, no channel references.
+_PHOTO_TEASERS = [
+    "mira lo que te acabo de hacer 🔥",
+    "toma, solo para ti 😏",
+    "esto para que no te olvides de mí 😈",
+    "para que te pongas más a tono 🔥",
+    "mira bien lo que te mando 👀",
+    "toma bonito, disfrútalo 😈",
+    "aquí tienes, para ti 💦",
+    "que lo disfrutes mi rey 🔥",
+    "mira lo que tengo para ti 😏",
+    "toma, que te lo has ganado 😈",
+]
+
 
 def _sanitize_response(text: str) -> str:
     """Remove asterisk-wrapped text, parentheticals, and markdown image tags."""
@@ -269,18 +286,18 @@ class TriggerEngine:
         self, turn_count: int, photos_sent: int, last_photo_turn: int,
         sent_filenames: list, assigned_filenames: list,
         force_explicit: bool = False, heat_hot: bool = False
-    ) -> Tuple[bool, Optional[Path], bool]:
+    ) -> Tuple[bool, Optional[Path], bool, Optional[str]]:
         """
         Decide whether to send a photo this turn.
-        Returns (will_send, photo_path, limit_reached).
+        Returns (will_send, photo_path, limit_reached, caption).
         force_explicit: user explicitly requested a photo → skip gap + probability.
         heat_hot: sexting heat is high → skip probability but KEEP gap (prevents back-to-back).
         """
         if self.photo_registry is None:
-            return False, None, False
+            return False, None, False, None
 
         if photos_sent >= self.settings.photo_max_per_session:
-            return False, None, True
+            return False, None, True, None
 
         gap = getattr(self.settings, 'photo_min_turns_gap', 8)
 
@@ -289,19 +306,27 @@ class TriggerEngine:
             pass
         else:
             if turn_count < 3:
-                return False, None, False
-            if turn_count - last_photo_turn < gap:
-                return False, None, False
+                return False, None, False, None
+            if last_photo_turn > 0:
+                # Enforce the gap only BETWEEN actual photo sends.
+                if turn_count - last_photo_turn < gap:
+                    return False, None, False, None
+            elif not heat_hot:
+                # No photo sent yet: warm chats wait out the gap, but when the
+                # sexting is hot Rosa takes the initiative and can send earlier.
+                if turn_count < gap:
+                    return False, None, False, None
             if not heat_hot and random.random() >= self.settings.photo_send_probability:
-                return False, None, False
+                return False, None, False, None
 
         photo_path = self.photo_registry.get_random_enabled_photo(
             exclude=sent_filenames, allowed=assigned_filenames or None
         )
         if photo_path is None:
-            return False, None, False
+            return False, None, False, None
 
-        return True, photo_path, False
+        caption = self.photo_registry.get_caption(photo_path.name)
+        return True, photo_path, False, caption
 
     async def _process_after_delay(self, chat_id: int, delay: float):
         """Process accumulated messages after the debounce delay expires."""
@@ -395,12 +420,17 @@ class TriggerEngine:
                 if _detect_heat(recent) == "hot":
                     heat_hot = True
 
-            will_send_photo, photo_path, photo_limit_reached = self._check_photo(
+            will_send_photo, photo_path, photo_limit_reached, _photo_caption = self._check_photo(
                 turn_count, photos_sent, last_photo_turn, sent_filenames, assigned_filenames,
                 force_explicit=photo_forced, heat_hot=heat_hot
             )
 
-            # Choose context type  — farewell handled above, never reaches here
+            # Choose context type  — farewell handled above, never reaches here.
+            # When Rosa sends a photo this turn, the accompanying text is a FIXED
+            # teaser (no LLM). This guarantees she never contradicts herself with
+            # excuses or VIP/canal mentions while actually sending a photo.
+            photo_teaser_fixed = False
+            context_messages = None
             if phase == "winding_down":
                 context_type = "winding_down"
                 context_messages = self.context_manager.build_context_winding_down_minimal(
@@ -412,10 +442,8 @@ class TriggerEngine:
                     chat_id, pending_media, turn_count
                 )
             elif will_send_photo:
-                context_type = "photo_hint"
-                context_messages = self.context_manager.build_context_with_photo_hint(
-                    chat_id, last_message, turn_count
-                )
+                context_type = "photo_teaser"
+                photo_teaser_fixed = True
             elif photo_limit_reached:
                 context_type = "normal"
                 context_messages = self.context_manager.build_context_with_photo_limit_hint(
@@ -427,20 +455,24 @@ class TriggerEngine:
                     chat_id, last_message, turn_count
                 )
 
-            max_tok = _calc_max_tokens(last_message, context_type)
+            if photo_teaser_fixed:
+                # No LLM call — deterministic teaser, zero risk of excuse/VIP leakage.
+                response_text = random.choice(_PHOTO_TEASERS)
+            else:
+                max_tok = _calc_max_tokens(last_message, context_type)
 
-            try:
-                response_text = await self.generator.generate(context_messages, max_tokens=max_tok)
-            except Exception as exc:
-                logger.error(f"Failed to generate response: {exc}")
-                return
+                try:
+                    response_text = await self.generator.generate(context_messages, max_tokens=max_tok)
+                except Exception as exc:
+                    logger.error(f"Failed to generate response: {exc}")
+                    return
 
-            # Post-processing: remove asterisks and parentheticals only
-            response_text = _sanitize_response(response_text)
+                # Post-processing: remove asterisks and parentheticals only
+                response_text = _sanitize_response(response_text)
 
-            if not response_text:
-                logger.error(f"Response was empty after sanitization for chat {chat_id}")
-                return
+                if not response_text:
+                    logger.error(f"Response was empty after sanitization for chat {chat_id}")
+                    return
 
             # Send text
             try:

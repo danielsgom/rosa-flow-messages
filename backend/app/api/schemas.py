@@ -45,6 +45,7 @@ class PhotoResponse(BaseModel):
     size_bytes: int
     enabled: bool
     url: str
+    caption: Optional[str] = None
 
 
 class PhotoListResponse(BaseModel):
@@ -54,6 +55,10 @@ class PhotoListResponse(BaseModel):
 
 class PhotoToggleRequest(BaseModel):
     enabled: bool
+
+
+class PhotoCaptionRequest(BaseModel):
+    caption: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -88,83 +93,6 @@ class ChatHistoryResponse(BaseModel):
     chat_id: int
     total_conversations: int
     conversations: List[ConversationHistoryItem]
-
-
-# ---------------------------------------------------------------------------
-# Cost tracking
-# ---------------------------------------------------------------------------
-
-class CostEntryResponse(BaseModel):
-    chat_id: int
-    chat_name: str
-    prompt_tokens: int
-    completion_tokens: int
-    cost_usd: float
-    timestamp: datetime
-
-
-class CostSummaryResponse(BaseModel):
-    total_calls: int
-    total_prompt_tokens: int
-    total_completion_tokens: int
-    total_tokens: int
-    total_cost_usd: float
-
-
-class ChatCostResponse(BaseModel):
-    chat_id: int
-    chat_name: str
-    calls: int
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
-    cost_usd: float
-
-
-
-class ToggleRequest(BaseModel):
-    enabled: bool
-
-
-class ToggleResponse(BaseModel):
-    chat_id: int
-    auto_enabled: bool
-    conversation_status: str
-
-
-class SyncResponse(BaseModel):
-    synced: int
-    total: int
-    chats: List[ChatResponse]
-
-
-class PhotoResponse(BaseModel):
-    filename: str
-    size_bytes: int
-    enabled: bool
-    url: str
-
-
-class PhotoListResponse(BaseModel):
-    total: int
-    photos: List[PhotoResponse]
-
-
-class PhotoToggleRequest(BaseModel):
-    enabled: bool
-
-
-# ---------------------------------------------------------------------------
-# Chat photo assignment
-# ---------------------------------------------------------------------------
-
-class ChatPhotosResponse(BaseModel):
-    chat_id: int
-    assigned_filenames: List[str]
-
-
-class ChatPhotosUpdate(BaseModel):
-    filenames: List[str]
 
 
 # ---------------------------------------------------------------------------

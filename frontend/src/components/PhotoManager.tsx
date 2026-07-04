@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { deletePhoto, getPhotos, togglePhoto, uploadPhoto } from '../services/api';
+import { deletePhoto, getPhotos, togglePhoto, updatePhotoCaption, uploadPhoto } from '../services/api';
 import { Photo } from '../types';
 import { ToggleSwitch } from './ToggleSwitch';
 
@@ -9,6 +9,8 @@ export const PhotoManager: React.FC<{ onPhotosChange?: (photos: Photo[]) => void
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [captionEdits, setCaptionEdits] = useState<Record<string, string>>({});
+  const [savingCaption, setSavingCaption] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPhotos = async () => {
@@ -16,6 +18,7 @@ export const PhotoManager: React.FC<{ onPhotosChange?: (photos: Photo[]) => void
       const data = await getPhotos();
       setPhotos(data.photos);
       onPhotosChange?.(data.photos);
+      setCaptionEdits(Object.fromEntries(data.photos.map(p => [p.filename, p.caption ?? ''])));
       setError(null);
     } catch (e) {
       setError('No se pudieron cargar las fotos');
@@ -34,6 +37,7 @@ export const PhotoManager: React.FC<{ onPhotosChange?: (photos: Photo[]) => void
     try {
       const photo = await uploadPhoto(file);
       setPhotos(prev => [...prev, photo]);
+      setCaptionEdits(prev => ({ ...prev, [photo.filename]: photo.caption ?? '' }));
     } catch (e) {
       setError('Error al subir la foto');
     } finally {
@@ -58,6 +62,22 @@ export const PhotoManager: React.FC<{ onPhotosChange?: (photos: Photo[]) => void
       setPhotos(prev => prev.map(p => p.filename === updated.filename ? updated : p));
     } catch {
       setError('Error al cambiar el estado de la foto');
+    }
+  };
+
+  const handleSaveCaption = async (filename: string) => {
+    const currentPhoto = photos.find(p => p.filename === filename);
+    const newCaption = captionEdits[filename]?.trim() || null;
+    const oldCaption = currentPhoto?.caption ?? null;
+    if (newCaption === oldCaption) return;
+    setSavingCaption(prev => new Set(prev).add(filename));
+    try {
+      const updated = await updatePhotoCaption(filename, newCaption);
+      setPhotos(prev => prev.map(p => p.filename === updated.filename ? updated : p));
+    } catch {
+      setError('Error al guardar el caption');
+    } finally {
+      setSavingCaption(prev => { const s = new Set(prev); s.delete(filename); return s; });
     }
   };
 
@@ -134,6 +154,23 @@ export const PhotoManager: React.FC<{ onPhotosChange?: (photos: Photo[]) => void
                       className="w-full h-full object-cover"
                       loading="lazy"
                     />
+                  </div>
+
+                  {/* Caption input */}
+                  <div className="px-2 pt-1.5 bg-white">
+                    <input
+                      type="text"
+                      value={captionEdits[photo.filename] ?? ''}
+                      placeholder="Describe la foto…"
+                      maxLength={200}
+                      className="w-full text-[10px] text-gray-600 placeholder-gray-300 bg-transparent border-0 border-b border-gray-100 focus:border-rosa-300 focus:outline-none pb-0.5"
+                      onChange={e => setCaptionEdits(prev => ({ ...prev, [photo.filename]: e.target.value }))}
+                      onBlur={() => handleSaveCaption(photo.filename)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                    />
+                    {savingCaption.has(photo.filename) && (
+                      <span className="text-[9px] text-rosa-400 animate-pulse">guardando…</span>
+                    )}
                   </div>
 
                   {/* Footer */}

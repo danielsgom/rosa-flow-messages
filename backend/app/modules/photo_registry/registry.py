@@ -38,6 +38,7 @@ class PhotoRegistry:
                 size_bytes=path.stat().st_size,
                 enabled=entry.get("enabled", True),
                 url=f"/api/photos/{path.name}/file",
+                caption=entry.get("caption") or None,
             ))
         return result
 
@@ -80,7 +81,7 @@ class PhotoRegistry:
             raise ValueError(f"Unsafe filename: {filename}")
         dest = self.photos_dir / filename
         dest.write_bytes(data)
-        self._meta[filename] = {"enabled": True}
+        self._meta[filename] = {"enabled": True, "caption": None}
         self._save_meta()
         logger.info(f"Photo saved: {filename} ({len(data)} bytes)")
         return PhotoMeta(
@@ -88,6 +89,7 @@ class PhotoRegistry:
             size_bytes=len(data),
             enabled=True,
             url=f"/api/photos/{filename}/file",
+            caption=None,
         )
 
     def delete_photo(self, filename: str) -> bool:
@@ -119,7 +121,31 @@ class PhotoRegistry:
             size_bytes=path.stat().st_size,
             enabled=enabled,
             url=f"/api/photos/{filename}/file",
+            caption=entry.get("caption") or None,
         )
+
+    def set_caption(self, filename: str, caption: Optional[str]) -> Optional[PhotoMeta]:
+        """Set or clear the caption for a photo."""
+        if not _SAFE_FILENAME_RE.match(filename):
+            return None
+        path = self.photos_dir / filename
+        if not path.exists():
+            return None
+        entry = self._meta.get(filename, {})
+        entry["caption"] = caption or None
+        self._meta[filename] = entry
+        self._save_meta()
+        return PhotoMeta(
+            filename=filename,
+            size_bytes=path.stat().st_size,
+            enabled=entry.get("enabled", True),
+            url=f"/api/photos/{filename}/file",
+            caption=caption or None,
+        )
+
+    def get_caption(self, filename: str) -> Optional[str]:
+        """Return the caption for a given filename, or None."""
+        return self._meta.get(filename, {}).get("caption") or None
 
     # ------------------------------------------------------------------
     # Private helpers

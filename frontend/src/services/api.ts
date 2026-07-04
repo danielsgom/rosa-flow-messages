@@ -75,6 +75,16 @@ export async function togglePhoto(filename: string, enabled: boolean): Promise<P
   return response.json();
 }
 
+export async function updatePhotoCaption(filename: string, caption: string | null): Promise<Photo> {
+  const response = await fetch(`${API_BASE}/photos/${encodeURIComponent(filename)}/caption`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ caption }),
+  });
+  if (!response.ok) throw new Error(`Failed to update caption: ${response.statusText}`);
+  return response.json();
+}
+
 // ---------------------------------------------------------------------------
 // Chat photo assignment API
 // ---------------------------------------------------------------------------

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -6,3 +8,4 @@ class PhotoMeta(BaseModel):
     size_bytes: int
     enabled: bool
     url: str
+    caption: Optional[str] = None

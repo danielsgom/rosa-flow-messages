@@ -18,6 +18,7 @@ export interface Photo {
   size_bytes: number;
   enabled: boolean;
   url: string;
+  caption?: string;
 }
 
 export interface ChatPhotos {
