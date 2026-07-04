@@ -11,10 +11,18 @@ from .models import Message
 _MADRID_TZ = ZoneInfo("Europe/Madrid")
 
 _HOT_KEYWORDS = {
+    # Core explicit terms (original)
     "tocando", "tocarte", "desnudo", "desnuda", "correrte", "corrido",
     "polla", "coño", "tetas", "culo", "mojada", "duro", "follarte",
     "masturbando", "masturbarte", "eyacular", "orgasmo", "venirme",
     "chuparte", "lamerte", "penetrar",
+    # Common in Spanish sexting — previously missed, caused wrong heat detection
+    "verga", "rabo", "pene", "coñito", "coñazo", "culito", "culote",
+    "tetitas", "pechos", "pezones", "mojadita", "mojadito", "mojado", "húmeda",
+    "chúpame", "chúpate", "mamada", "mamarte", "follando", "follada",
+    "fóllame", "follarme", "empotrar", "empotrarte", "correrse", "corrida",
+    "corriéndome", "correrme", "eyaculación", "semen",
+    "polla dura", "la tengo dura", "está dura",
 }
 _EMOTIONAL_KEYWORDS = {
     "triste", "llorar", "llorando", "mierda", "mal día", "deprimido",
@@ -221,22 +229,35 @@ class ContextManager:
 
         return messages
 
-    def build_context_winding_down_minimal(self, last_message: str) -> List[dict]:
+    def build_context_winding_down_minimal(self, last_message: str, heat: str = "warm") -> List[dict]:
         """
         Minimal winding-down context — NO conversation history, NO full system prompt.
-        Only a brief instruction and the user's last message. Forces the model to hint
-        at leaving without being derailed by heavy sexting history.
+        Only a brief instruction and the user’s last message.
+        heat='hot': seeds the leaving hint WITHOUT cutting the sexual temperature.
+        heat='warm': gentle cool-down hint.
         """
-        return [
-            {"role": "system", "content": (
-                "Eres Rosa, una chica española coqueta y natural que habla por WhatsApp. "
-                "Responde al mensaje del usuario de forma breve y cariñosa (máximo 2 frases). "
+        if heat == "hot":
+            seed = (
+                "OBLIGATORIO: siembra sutilmente que pronto tendrás que irte, "
+                "SIN bajar la temperatura sexual ni cortar el rollo. "
+                "Ejemplos: 'ufff sigue sigue... aunque en nada tengo que irme 🙈', "
+                "'jooo qué rico esto, lástima que en un rato me espera una cosa 🔥', "
+                "'no pares que aunque me quede poco tiempo quiero más 🔥'. "
+                "PROHIBIDO prometer fotos. NO te despidas todavía. Mantén el nivel erótico."
+            )
+        else:
+            seed = (
                 "OBLIGATORIO: menciona sutilmente que pronto tendrás que irte, de forma natural, "
                 "por ejemplo: 'uf es que en un rato tengo que salir', "
                 "'me quedo un ratito más y luego me piro', 'ay que tengo una cosita ahora'. "
                 "No te despidas todavía. Sé coqueta pero baja la intensidad. "
-                "PROHIBIDO prometer o insinuar que mandarás una foto ('te mando una foto luego', "
-                "'te la paso después'): NUNCA prometas fotos. Si te piden una, no prometas nada."
+                "PROHIBIDO prometer o insinuar que mandarás una foto."
+            )
+        return [
+            {"role": "system", "content": (
+                "Eres Rosa, una chica española coqueta y natural que habla por WhatsApp. "
+                "Responde al mensaje del usuario de forma breve y cariñosa (máximo 2 frases). "
+                + seed
             )},
             {"role": "user", "content": last_message},
         ]

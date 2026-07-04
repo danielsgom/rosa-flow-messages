@@ -8,42 +8,55 @@ logger = get_logger(__name__)
 
 
 class TelegramSender:
-    """Sends messages through Telegram."""
+    """Sends messages through Telegram with realistic human-like presence."""
 
     def __init__(self, client_wrapper):
         self.client_wrapper = client_wrapper
 
     async def send_message(self, entity, text: str) -> None:
         """
-        Send a message to a Telegram entity.
-        If the text contains double newlines (\n\n), splits into multiple
-        messages to emulate WhatsApp multi-message behavior.
-        A small random delay (1-3s) is added between consecutive messages.
+        Send a message (or split messages) to a Telegram entity.
+
+        For each message part:
+          1. Mark the conversation as read (clears unread badge).
+          2. Show the “typing…” indicator while simulating reading + composing time.
+          3. Send the message.
+
+        Timing: base reading/thinking delay + proportional typing time.
         """
         client = self.client_wrapper.get_client()
 
-        # Split by double newline to separate independent messages
+        # Mark conversation as read so the unread badge clears before typing appears
+        try:
+            await client.send_read_acknowledge(entity)
+        except Exception:
+            pass  # non-critical — never block sending because of this
+
         parts = [p.strip() for p in text.split("\n\n") if p.strip()]
         if not parts:
             parts = [text.strip()]
 
         for idx, msg_text in enumerate(parts):
-            # Typing delay proportional to message length (simulates real typing)
-            # ~40-60ms per character + 1.5-2.5s base (reading previous message)
-            delay = 0.0
-            if idx > 0:
-                chars = len(msg_text)
-                base = random.uniform(1.5, 2.5)
-                typing = chars * random.uniform(0.04, 0.06)
-                delay = min(base + typing, 15.0)  # cap at 15s
-                await asyncio.sleep(delay)
+            chars = len(msg_text)
+            # First message: shorter reading pause (already waited the debounce delay).
+            # Subsequent parts: inter-message gap as if finishing one thought and starting next.
+            if idx == 0:
+                base = random.uniform(0.4, 1.2)
+            else:
+                base = random.uniform(0.8, 1.8)
+            typing_time = min(chars * random.uniform(0.035, 0.055), 12.0)
+            total_delay = base + typing_time
+
+            # Show “typing…” indicator while composing; fall back to plain sleep on error
+            try:
+                async with client.action(entity, 'typing'):
+                    await asyncio.sleep(total_delay)
+            except Exception:
+                await asyncio.sleep(total_delay)
 
             try:
                 await client.send_message(entity, msg_text)
-                if idx > 0:
-                    logger.info(f"Message sent to {entity} (+{delay:.1f}s delay)")
-                else:
-                    logger.info(f"Message sent to {entity}")
+                logger.info(f"Message sent to {entity} (typed {total_delay:.1f}s)")
             except Exception as exc:
                 logger.error(f"Failed to send message to {entity}: {exc}")
                 raise
